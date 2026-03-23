@@ -1,0 +1,46 @@
+# Dependencies (reinstalled in container)
+node_modules
+
+# Build output (generated in container)
+build
+.svelte-kit
+
+# Docker & infra
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+
+# Environment (never copy into image)
+.env
+.env.*
+!.env.example
+
+# Dev & IDE
+.vscode
+.idea
+.claude
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Git
+.git
+.gitignore
+
+# Dev scripts & docs
+scripts/
+docs/
+
+# Drizzle meta
+drizzle/meta
+
+# PocketBase local data
+pb_data
+pb_migrations

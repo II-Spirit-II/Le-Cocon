@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Dossier de Présentation - Le Cocon</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #9a6d5d; 
+            --secondary: #fdf8f5; 
+            --accent: #e2d1c3;
+            --text-main: #4a3f35; 
+            --text-light: #7a6f65; 
+            --white: #ffffff;
+            --glass: rgba(255, 255, 255, 0.7);
+        }
+
+        @page {
+            size: A4;
+            margin: 0;
+        }
+
+        @media print {
+            body { 
+                background: white !important; 
+                -webkit-print-color-adjust: exact; 
+                print-color-adjust: exact;
+            }
+            .page { 
+                margin: 0 !important; 
+                box-shadow: none !important; 
+                page-break-after: always;
+                width: 210mm;
+                height: 297mm; 
+                overflow: hidden;
+            }
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f5f5f5;
+            margin: 0; padding: 0;
+            color: var(--text-main);
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .page {
+            width: 210mm; 
+            height: 297mm;
+            padding: 12mm 18mm; 
+            margin: 10mm auto;
+            background: var(--secondary);
+            box-shadow: 0 0 20px rgba(0,0,0,0.05);
+            position: relative; 
+            display: flex; 
+            flex-direction: column;
+            box-sizing: border-box; 
+        }
+
+        .blob {
+            position: absolute; border-radius: 50%;
+            filter: blur(60px); opacity: 0.3; z-index: 0;
+        }
+
+        .header {
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid var(--accent);
+            padding-bottom: 4mm; margin-bottom: 8mm; z-index: 1;
+        }
+
+        .logo { font-weight: 700; font-size: 24px; color: var(--primary); letter-spacing: -1px; }
+
+        h1 { font-size: 36px; color: var(--primary); line-height: 1.1; margin: 0; }
+        h2 { font-size: 22px; color: var(--primary); border-left: 4px solid var(--primary); padding-left: 15px; margin-top: 25px; margin-bottom: 15px; }
+        
+        .badge {
+            display: inline-block; padding: 6px 15px; background: var(--primary);
+            color: white; border-radius: 50px; font-size: 11px; font-weight: 700; margin-bottom: 12px;
+        }
+
+        .grid-feature {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 15px; z-index: 1;
+        }
+
+        .card {
+            background: var(--glass); backdrop-filter: blur(10px);
+            border: 1px solid var(--white); padding: 20px;
+            border-radius: 20px; box-shadow: 0 8px 30px rgba(0,0,0,0.02);
+        }
+
+        .card h3 { color: var(--primary); margin-top: 0; font-size: 17px; display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .card p { margin: 0; font-size: 14px; line-height: 1.4; }
+
+        .example-box {
+            background: #f1ebe6; border-left: 3px solid var(--primary);
+            padding: 12px; border-radius: 10px; font-style: italic; font-size: 13px; margin-top: 10px;
+        }
+
+        .footer {
+            margin-top: auto; padding-top: 5mm; border-top: 1px solid var(--accent);
+            font-size: 10px; color: var(--text-light); display: flex; justify-content: space-between;
+        }
+
+        .full-width-highlight {
+            background: var(--primary); color: white; padding: 25px;
+            border-radius: 20px; margin: 15px 0;
+        }
+        .full-width-highlight p { margin: 0; font-size: 15px; }
+
+        .engagement-card {
+            margin-top: 20px; 
+            margin-bottom: 10px; 
+            border: 2px solid var(--primary);
+            background: var(--glass);
+            padding: 22px;
+            border-radius: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="page">
+        <div class="blob" style="width: 500px; height: 500px; top: -150px; right: -150px; background: var(--accent);"></div>
+        
+        <div class="header">
+            <div class="logo">Le Cocon</div>
+            <div class="tagline">Fonctionnalités</div>
+        </div>
+
+        <div style="text-align: center; margin-top: 10mm; z-index: 1;">
+            <div class="badge">SÉCURITÉ • SOUVERAINETÉ • INNOVATION</div>
+            <h1>Le Cahier de Liaison 2.0</h1>
+            <p style="font-size: 17px; color: var(--text-light); max-width: 600px; margin: 15px auto;">
+                Le Cocon déploie une technologie capable d'automatiser le suivi de +100 enfants. Une technologie française conçue pour redonner la priorité à l'humain.
+            </p>
+        </div>
+
+        <h2>Les fonctionnalités</h2>
+        <div class="grid-feature">
+            <div class="card">
+                <h3>📢 News en direct</h3>
+                <p>Les professionnels partagent les moments de vie en un clic. Les parents reçoivent instantanément les nouvelles sur leur téléphone, créant un lien continu.</p>
+            </div>
+            <div class="card">
+                <h3>📱 Multi-support</h3>
+                <p>Optimisée pour ordinateur et smartphone. Une interface fluide qui permet une saisie en mouvement, sans jamais quitter les enfants du regard.</p>
+            </div>
+        </div>
+
+        <div class="grid-feature">
+            <div class="card">
+                <h3>📊 Tableau de bord</h3>
+                <p>Suivez la tendance de votre journée en direct. Restez focalisé sur l'essentiel : ce qui est fait, et ce qu'il vous reste à accomplir.</p>
+            </div>
+            <div class="card">
+                <h3>📅 Calendrier Intelligent</h3>
+                <p>Le système analyse les messages. Si un parent écrit "Léo sera absent", le calendrier se met à jour automatiquement sans intervention manuelle.</p>
+            </div>
+        </div>
+
+        <div class="full-width-highlight">
+            <h3 style="margin-top:0; color: white; font-size: 18px;">🚀 La révolution du temps : Saisie de masse</h3>
+            <p>Le point fort de l'application : une stratégie de saisie innovante permettant de remplir les journaux de bord simultanément pour l'ensemble de la structure. Ce qui prenait des heures ne prend plus que quelques minutes.</p>
+        </div>
+
+        <div class="footer">
+            <span>Dossier de Présentation - Le Cocon</span>
+            <span>Page 1/2</span>
+        </div>
+    </div>
+
+    <div class="page">
+        <div class="blob" style="width: 400px; height: 400px; bottom: -100px; left: -100px; background: var(--primary); opacity: 0.15;"></div>
+
+        <div class="header">
+            <div class="logo">Le Cocon</div>
+            <div class="tagline">Assistant IA & Sécurité</div>
+        </div>
+
+        <h2>L'Agent IA : L'action intelligente</h2>
+        <p style="margin-bottom: 15px; font-size: 15px;">L'assistant du Cocon ne se contente plus de répondre aux questions, il <strong>agit</strong> directement pour le compte du professionnel.</p>
+
+        <div class="card" style="margin-bottom: 15px;">
+            <h3>🤖 Un agent qui exécute vos ordres</h3>
+            <p>Basé sur Mistral AI (France), l'agent traite les demandes en langage naturel et met à jour la base de données en temps réel.</p>
+            <div class="example-box">
+                "Remplis le journal de Léo : il a très bien mangé et a fait une sieste paisible de 14h à 15h30."
+            </div>
+            <p style="font-size: 13px; margin-top: 8px;">➔ <strong>Résultat :</strong> Données structurées et publiées automatiquement.</p>
+        </div>
+
+        <h2>Sécurité & Souveraineté Totale</h2>
+        <div class="card" style="margin-bottom: 15px;">
+            <h3>🇫🇷 Hébergement Français</h3>
+            <p>Toutes les informations sont stockées en France. L'intelligence est locale, souveraine et respecte strictement la confidentialité des mineurs.</p>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div class="card">
+                <h3>🔒 Confidentialité</h3>
+                <p style="font-size: 13px;">Accès unique et privé par famille. Respect strict du RGPD pour protéger la vie privée des enfants.</p>
+            </div>
+            <div class="card">
+                <h3>🛡️ Protection</h3>
+                <p style="font-size: 13px;">Données protégées contre toute loi extraterritoriale étrangère.</p>
+            </div>
+        </div>
+
+        <div class="engagement-card">
+            <h3 style="margin-top: 0; margin-bottom: 8px; color: var(--primary); font-size: 18px;">L'engagement "Le Cocon"</h3>
+            <p style="margin-bottom: 0; font-size: 14px;"><strong>Zéro paperasse, Zéro perte d'information, Ultra sécurisé.</strong> Une solution qui valorise le métier d'assistante maternelle tout en offrant aux structures un outil de pilotage moderne.</p>
+        </div>
+
+        <div class="footer">
+            <span>Dossier de présentation - Le Cocon</span>
+            <span>Page 2/2</span>
+        </div>
+    </div>
+</body>
+</html>

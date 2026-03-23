@@ -1,0 +1,32 @@
+# Le Cocon — Docker Compose (dev only: PostgreSQL)
+#
+# Start:    docker compose up -d
+# Stop:     docker compose down
+# Reset DB: docker compose down -v
+# Logs:     docker compose logs -f postgres
+
+name: le_cocon
+
+services:
+
+  postgres:
+    container_name: le-cocon-postgres
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: lecocon
+      POSTGRES_PASSWORD: lecocon_dev
+      POSTGRES_DB: lecocon
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lecocon -d lecocon"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

@@ -1,0 +1,611 @@
+@import "tailwindcss";
+
+/* ========================================
+   Self-hosted fonts — no external requests
+   ======================================== */
+
+@font-face {
+  font-family: 'DM Sans';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/dm-sans-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'DM Sans';
+  font-style: italic;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url('/fonts/dm-sans-italic-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url('/fonts/fraunces-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Fraunces';
+  font-style: italic;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url('/fonts/fraunces-italic-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ========================================
+   Theme "Soie & Lumiere" — Le Cocon
+   ======================================== */
+
+@theme {
+  /* ── Primary: Miel Ambre ── */
+  --color-miel-50:  #fef9f2;
+  --color-miel-100: #fdf0de;
+  --color-miel-200: #fbddbb;
+  --color-miel-300: #f7c48e;
+  --color-miel-400: #f2a65c;
+  --color-miel-500: #E8913A;
+  --color-miel-600: #d47a2a;
+  --color-miel-700: #b06023;
+  --color-miel-800: #8e4d22;
+  --color-miel-900: #74401e;
+  --color-miel-950: #3e200e;
+
+  /* ── Secondary: Terre de Sienne ── */
+  --color-sienne-50:  #fdf5f2;
+  --color-sienne-100: #fbe8e0;
+  --color-sienne-200: #f7cec0;
+  --color-sienne-300: #f0ac96;
+  --color-sienne-400: #e68264;
+  --color-sienne-500: #C2653A;
+  --color-sienne-600: #ab5430;
+  --color-sienne-700: #8f4328;
+  --color-sienne-800: #763926;
+  --color-sienne-900: #633224;
+  --color-sienne-950: #351810;
+
+  /* ── Neutral: Warm Soie ── */
+  --color-soie: #FFF8F0;
+  --color-voile: rgba(255, 248, 240, 0.65);
+  --color-nuit: #1A1612;
+
+  --color-warm-50:  #FFF8F0;
+  --color-warm-100: #FFF3E6;
+  --color-warm-200: #F5E6D3;
+  --color-warm-300: #E8D5C0;
+  --color-warm-400: #D4BBA4;
+  --color-warm-500: #B89E86;
+  --color-warm-600: #9C826A;
+  --color-warm-700: #7D6654;
+  --color-warm-800: #5E4C3E;
+  --color-warm-900: #3D3028;
+  --color-warm-950: #1A1612;
+
+  /* ── Semantic: mood & status ── */
+  --color-soleil-400: #F2C14E;
+  --color-soleil-500: #E5B03A;
+  --color-sable-400:  #D4A574;
+  --color-sable-500:  #C49464;
+  --color-argile-400: #D4736A;
+  --color-argile-500: #C2635A;
+  --color-bleu-50:    #F0F7FA;
+  --color-bleu-100:   #DCEcF2;
+  --color-bleu-200:   #BBDAE6;
+  --color-bleu-300:   #98C3D4;
+  --color-bleu-400:   #7BA7BC;
+  --color-bleu-500:   #6A96AB;
+  --color-bleu-600:   #557A8D;
+  --color-bleu-700:   #466372;
+  --color-bleu-800:   #3B535F;
+  --color-bleu-900:   #344650;
+  --color-bleu-950:   #212E36;
+  --color-mousse-50:  #F4F9F0;
+  --color-mousse-100: #E6F2DE;
+  --color-mousse-200: #CCDFC2;
+  --color-mousse-300: #A8CCA0;
+  --color-mousse-400: #7DB87A;
+  --color-mousse-500: #5FA05B;
+  --color-mousse-600: #4A8747;
+
+  /* ── Fonts ── */
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --font-display: 'Fraunces', Georgia, serif;
+
+  /* ── Border radius: Rondeur assumee ── */
+  --radius-sm:  0.75rem;
+  --radius-md:  1rem;
+  --radius-lg:  1.25rem;
+  --radius-xl:  1.5rem;
+  --radius-2xl: 1.75rem;
+  --radius-3xl: 2rem;
+  --radius-4xl: 2.25rem;
+
+  /* ── Shadows: warm-tinted ── */
+  --shadow-sm:   0 2px 8px rgba(194, 101, 58, 0.06);
+  --shadow-md:   0 8px 24px rgba(194, 101, 58, 0.08);
+  --shadow-lg:   0 16px 48px rgba(194, 101, 58, 0.12);
+  --shadow-glow: 0 0 40px rgba(232, 145, 58, 0.15);
+}
+
+/* ========================================
+   Base
+   ======================================== */
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply min-h-screen;
+  }
+
+  /* All buttons show pointer cursor by default */
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  /* Fraunces WONK axis for display headings */
+  h1, h2, h3, .font-display {
+    font-variation-settings: 'WONK' 1, 'SOFT' 100;
+  }
+}
+
+/* ========================================
+   Design tokens: Glass surfaces
+   ======================================== */
+
+/* Glass Level 1 — Primary cards, panels */
+.glass-1 {
+  background: rgba(255, 248, 240, 0.65);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 32px rgba(194, 101, 58, 0.08);
+}
+
+/* Glass Level 2 — Nested elements inside glass-1 */
+.glass-2 {
+  background: rgba(255, 248, 238, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 240, 220, 0.35);
+  box-shadow: 0 2px 8px rgba(194, 101, 58, 0.04);
+}
+
+/* Glass card hover effect */
+.glass-hover {
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.glass-hover:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 16px 48px rgba(194, 101, 58, 0.12);
+}
+
+/* ========================================
+   Mesh background: gradient "Aube"
+   ======================================== */
+
+.bg-aube {
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 10%, rgba(232, 145, 58, 0.08), transparent 60%),
+    radial-gradient(ellipse 60% 50% at 80% 30%, rgba(250, 221, 187, 0.15), transparent 60%),
+    radial-gradient(ellipse 70% 40% at 50% 90%, rgba(194, 101, 58, 0.05), transparent 60%),
+    linear-gradient(160deg, #FFF8F0 0%, #F5E6D3 40%, #FADCC5 70%, #F0C8A8 100%);
+}
+
+/* Emphase gradient for landing/onboarding */
+.bg-aube-intense {
+  background:
+    radial-gradient(ellipse 80% 60% at 30% 0%, rgba(232, 145, 58, 0.15), transparent 60%),
+    radial-gradient(ellipse 60% 50% at 70% 80%, rgba(194, 101, 58, 0.1), transparent 60%),
+    linear-gradient(160deg, #E8913A 0%, #C2653A 60%, #9E4A35 100%);
+}
+
+/* ========================================
+   Component utilities
+   ======================================== */
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-semibold transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+    transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  .btn-primary {
+    @apply bg-miel-500 text-white hover:bg-miel-600 focus-visible:ring-miel-500;
+    box-shadow: 0 4px 16px rgba(232, 145, 58, 0.3);
+  }
+
+  .btn-primary:hover {
+    box-shadow: 0 6px 24px rgba(232, 145, 58, 0.4);
+  }
+
+  .btn-secondary {
+    @apply text-sienne-600 focus-visible:ring-miel-400;
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(232, 145, 58, 0.2);
+  }
+
+  .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.6);
+    border-color: rgba(232, 145, 58, 0.35);
+  }
+
+  .btn-ghost {
+    @apply bg-transparent text-sienne-500 hover:text-sienne-600 focus-visible:ring-warm-300;
+  }
+
+  .btn-ghost:hover {
+    background: rgba(232, 145, 58, 0.08);
+  }
+
+  .card {
+    @apply rounded-3xl;
+    background: rgba(255, 248, 240, 0.65);
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 8px 32px rgba(194, 101, 58, 0.08);
+  }
+
+  .input {
+    @apply block w-full rounded-xl px-4 py-2.5 text-warm-900 placeholder-warm-500 transition-all;
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+  }
+
+  .input:focus {
+    border-color: rgba(232, 145, 58, 0.5);
+    box-shadow: 0 0 0 3px rgba(232, 145, 58, 0.12), 0 0 20px rgba(232, 145, 58, 0.08);
+    outline: none;
+  }
+
+  .label {
+    @apply block text-sm font-semibold text-warm-700 mb-1.5;
+  }
+}
+
+/* ========================================
+   Animations
+   ======================================== */
+
+/* Fade in from bottom */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Fade in from left */
+@keyframes fadeInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Fade in from right */
+@keyframes fadeInRight {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Scale in */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes growLine {
+  from {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+/* Subtle float animation */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* Pulse glow — warm miel */
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(232, 145, 58, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 15px rgba(232, 145, 58, 0);
+  }
+}
+
+/* Simple fade */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Subtle fly-up for cards */
+@keyframes flyUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Breathe — for mood orb */
+@keyframes breathe {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.06); opacity: 1; }
+}
+
+/* Skeleton shimmer — warm palette */
+@keyframes shimmer {
+  0%   { background-position: -500px 0; }
+  100% { background-position: 500px 0; }
+}
+
+/* AI note reveal */
+@keyframes aiNoteReveal {
+  0%   { box-shadow: 0 0 0 2px rgba(232, 145, 58, 0.4); background-color: rgba(253, 240, 222, 0.6); }
+  70%  { box-shadow: 0 0 0 2px rgba(232, 145, 58, 0.15); background-color: rgba(253, 240, 222, 0.2); }
+  100% { box-shadow: none; background-color: transparent; }
+}
+
+/* Orb float — for background decorative orbs */
+@keyframes orbFloat {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(15px, -20px) scale(1.05); }
+  66% { transform: translate(-10px, 10px) scale(0.97); }
+}
+
+/* ── Animation utility classes ── */
+
+.animate-on-scroll {
+  opacity: 0;
+}
+
+.animate-on-scroll.is-visible {
+  animation-duration: 0.8s;
+  animation-fill-mode: forwards;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.animate-on-scroll.is-visible.fade-up { animation-name: fadeInUp; }
+.animate-on-scroll.is-visible.fade-left { animation-name: fadeInLeft; }
+.animate-on-scroll.is-visible.fade-right { animation-name: fadeInRight; }
+.animate-on-scroll.is-visible.scale-in { animation-name: scaleIn; }
+.animate-on-scroll.steps-line {
+  transform-origin: left center;
+  transform: scaleX(0);
+}
+.animate-on-scroll.is-visible.steps-line {
+  animation-name: growLine;
+  animation-duration: 0.9s;
+  animation-delay: 0.8s;
+}
+
+/* Stagger delays */
+.delay-100 { animation-delay: 0.1s; }
+.delay-200 { animation-delay: 0.2s; }
+.delay-300 { animation-delay: 0.3s; }
+.delay-400 { animation-delay: 0.4s; }
+.delay-500 { animation-delay: 0.5s; }
+
+.animate-float { animation: float 4s ease-in-out infinite; }
+.animate-pulse-glow { animation: pulseGlow 2s ease-in-out infinite; }
+.animate-breathe { animation: breathe 3.5s ease-in-out infinite; }
+
+.animate-widget {
+  animation: flyUp 0.25s ease-out forwards;
+}
+
+/* Page-level stagger — add to content wrapper for global block entrance */
+.page-stagger > * {
+  animation: flyUp 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.page-stagger > *:nth-child(1) { animation-delay: 0.04s; }
+.page-stagger > *:nth-child(2) { animation-delay: 0.07s; }
+.page-stagger > *:nth-child(3) { animation-delay: 0.10s; }
+.page-stagger > *:nth-child(4) { animation-delay: 0.13s; }
+.page-stagger > *:nth-child(5) { animation-delay: 0.16s; }
+.page-stagger > *:nth-child(6) { animation-delay: 0.19s; }
+.page-stagger > *:nth-child(7) { animation-delay: 0.22s; }
+.page-stagger > *:nth-child(n+8) { animation-delay: 0.25s; }
+
+/* Stagger for list items */
+.animate-stagger > * {
+  opacity: 0;
+  animation: flyUp 0.25s ease-out forwards;
+}
+
+.animate-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.animate-stagger > *:nth-child(2) { animation-delay: 30ms; }
+.animate-stagger > *:nth-child(3) { animation-delay: 60ms; }
+.animate-stagger > *:nth-child(4) { animation-delay: 90ms; }
+.animate-stagger > *:nth-child(5) { animation-delay: 120ms; }
+.animate-stagger > *:nth-child(6) { animation-delay: 150ms; }
+.animate-stagger > *:nth-child(n+7) { animation-delay: 180ms; }
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg,
+    #F5E6D3 0%,
+    #FADCC5 40%,
+    #F5E6D3 80%
+  );
+  background-size: 500px 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+
+.animate-ai-note {
+  animation: aiNoteReveal 1.8s ease-out forwards;
+  border-radius: 0.75rem;
+}
+
+/* Gradient text — miel signature */
+.text-gradient {
+  background: linear-gradient(135deg, #E8913A 0%, #C2653A 50%, #9E4A35 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Hero gradient background */
+.hero-gradient {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(232, 145, 58, 0.15), transparent),
+    radial-gradient(ellipse 60% 40% at 80% 60%, rgba(250, 221, 187, 0.3), transparent),
+    linear-gradient(to bottom right, #FFF8F0, #F5E6D3, #FADCC5);
+}
+
+/* Legacy glass-card (compat) */
+.glass-card {
+  background: rgba(255, 248, 240, 0.65);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Feature card hover */
+.feature-card {
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.feature-card:hover {
+  transform: translateY(-5px) scale(1.02);
+  box-shadow: 0 20px 48px rgba(194, 101, 58, 0.12);
+}
+
+/* Testimonial card */
+.testimonial-card {
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.testimonial-card:hover {
+  transform: scale(1.02);
+}
+
+/* Section divider wave */
+.wave-divider {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  overflow: hidden;
+  line-height: 0;
+}
+
+.wave-divider svg {
+  position: relative;
+  display: block;
+  width: calc(100% + 1.3px);
+  height: 60px;
+}
+
+/* ========================================
+   Respect prefers-reduced-motion
+   ======================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-widget,
+  .animate-stagger > *,
+  .animate-on-scroll.is-visible,
+  .animate-float,
+  .animate-pulse-glow,
+  .animate-ai-note,
+  .animate-breathe,
+  .skeleton-shimmer {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .feature-card:hover,
+  .testimonial-card:hover,
+  .glass-hover:hover {
+    transform: none !important;
+  }
+}
+
+/* ========================================
+   View Transitions — "Card Stack"
+   Old stays fully opaque underneath.
+   New fades in on top. No flash possible.
+   ======================================== */
+
+/* Disable default cross-fade isolation so we can layer manually */
+::view-transition-image-pair(root) {
+  isolation: auto;
+}
+
+/* Old: stays put, never fades — acts as backdrop */
+::view-transition-old(root) {
+  animation: none;
+  opacity: 1;
+  mix-blend-mode: normal;
+}
+
+/* New: fades in on top, covers the old */
+::view-transition-new(root) {
+  animation: vt-reveal 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
+  mix-blend-mode: normal;
+}
+
+@keyframes vt-reveal {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-new(root) {
+    animation: none !important;
+  }
+}

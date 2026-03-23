@@ -1,0 +1,42 @@
+# Dependencies
+node_modules
+
+# Build
+.svelte-kit
+build
+dist
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea
+.vscode
+.claude
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Testing
+coverage
+
+# Drizzle
+drizzle/meta
+
+# PocketBase data
+pb_data
+
+# Uploads (dev only, prod uses S3)
+static/uploads
+
+# Misc
+*.local

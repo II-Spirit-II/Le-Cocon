@@ -1,0 +1,291 @@
+import { json, error } from '@sveltejs/kit';
+import type { RequestHandler } from './$types';
+import { executeAIPipeline } from '$lib/server/ai/pipeline';
+import {
+  classifyIntent,
+  executeAction,
+  createJournalFromFormData,
+  extractMoodRuleBased,
+  type JournalFormData,
+  type NapQuality,
+  type JournalMealEntry,
+} from '$lib/server/ai/actions';
+import { chatCompletion, isAIEnabled } from '$lib/server/ai/ollama';
+import { getMenusForDate } from '$lib/domain/menus';
+import { createNews } from '$lib/domain/news';
+import { getChildrenForUser } from '$lib/domain/children';
+import { createRateLimiter } from '$lib/server/helpers';
+import type { MoodLevel, MealLevel, MealType } from '$lib/types';
+
+interface ChildOption {
+  id: string;
+  name: string;
+}
+
+const checkRateLimit = createRateLimiter(15, 60_000);
+
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i;
+
+function childIdFromPath(contextPath: string): string | null {
+  if (!contextPath.includes('/app/children/')) return null;
+  const m = contextPath.match(UUID_RE);
+  return m?.[0] ?? null;
+}
+
+function normalize(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/['']/g, "'");
+}
+
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/gs, '$1')
+    .replace(/\*(.*?)\*/gs, '$1')
+    .replace(/_{2}(.*?)_{2}/gs, '$1')
+    .replace(/_(.*?)_/gs, '$1')
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`(.*?)`/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '- ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+const SYSTEM_NO_MARKDOWN =
+  'Réponds en français, de façon concise et chaleureuse. ' +
+  'Ne jamais utiliser de markdown (pas de *, **, #, `, listes à puces formatées). ' +
+  'Utilise des phrases simples.';
+
+export const POST: RequestHandler = async ({ request, locals }) => {
+  const { db, user } = locals;
+
+  if (!user) throw error(401, 'Non authentifié');
+
+  if (!isAIEnabled()) {
+    return json({ reply: "L'assistant IA est actuellement désactivé." });
+  }
+
+  if (!checkRateLimit(user.id)) {
+    return json({ reply: 'Trop de messages. Patientez une minute avant de réessayer.' }, { status: 429 });
+  }
+
+  let body: { message?: unknown; contextPath?: unknown; conversationHistory?: unknown; journalData?: unknown; newsData?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    throw error(400, 'Corps de requête invalide');
+  }
+
+  const message = typeof body.message === 'string' ? body.message.trim().slice(0, 500) : '';
+  if (!message) throw error(400, 'Message requis');
+
+  const rawJd = body.journalData as Record<string, unknown> | undefined;
+  const journalData: JournalFormData | null =
+    rawJd && typeof rawJd.childId === 'string'
+      ? {
+          childId: rawJd.childId,
+          childName: String(rawJd.childName ?? ''),
+          mood: (rawJd.mood as MoodLevel) ?? 'calme',
+          napQuality: (rawJd.napQuality as NapQuality) ?? 'none',
+          meals: Array.isArray(rawJd.meals)
+            ? (rawJd.meals as Record<string, unknown>[])
+                .filter(m => m && typeof m === 'object')
+                .map(m => ({
+                  type: m.type as MealType,
+                  description: String(m.description ?? ''),
+                  level: m.level !== null && m.level !== undefined ? (m.level as MealLevel) : null,
+                } satisfies JournalMealEntry))
+            : [],
+          changes: typeof rawJd.changes === 'number' ? rawJd.changes : 3,
+          hasHealth: Boolean(rawJd.hasHealth),
+          healthNote: String(rawJd.healthNote ?? ''),
+          menuId: typeof rawJd.menuId === 'string' ? rawJd.menuId : null,
+        }
+      : null;
+
+  const contextPath = typeof body.contextPath === 'string' ? body.contextPath : '';
+  const rawHistory = Array.isArray(body.conversationHistory) ? body.conversationHistory : [];
+  const conversationHistory = rawHistory
+    .filter((m): m is { role: 'user' | 'assistant'; content: string } =>
+      m && typeof m === 'object' &&
+      (m.role === 'user' || m.role === 'assistant') &&
+      typeof m.content === 'string'
+    )
+    .slice(-12); // last 6 exchanges
+
+  const role = user.role;
+
+  const napDefaults = { start: user.defaultNapStart, end: user.defaultNapEnd };
+
+  if (journalData && role === 'assistante') {
+    const result = await createJournalFromFormData(db, journalData, user.id, napDefaults);
+    return json({ reply: result.message, action: result });
+  }
+
+  const rawNd = body.newsData as Record<string, unknown> | undefined;
+  if (rawNd && typeof rawNd.childId === 'string' && role === 'assistante') {
+    const newsChildId = rawNd.childId;
+    const newsContent = String(rawNd.content ?? '').trim().slice(0, 200);
+    if (!newsContent) return json({ reply: 'Le contenu de la news est vide.' });
+    const newsItem = await createNews(db, { childId: newsChildId, content: newsContent, emoji: undefined }, user.id);
+    if (newsItem) {
+      return json({
+        reply: 'News publiée avec succès !',
+        action: { type: 'create_news', success: true, message: 'News publiée !', resourcePath: '/app/feed', resourceLabel: 'Voir les news' },
+      });
+    }
+    return json({ reply: 'Impossible de publier la news. Vérifiez vos droits.' });
+  }
+
+  const rawChildren = await getChildrenForUser(db, user.id, user.role as 'assistante' | 'parent');
+  const childrenList = rawChildren.map(c => ({
+    id: c.id,
+    first_name: c.firstName,
+    last_name: c.lastName,
+  }));
+
+  let targetChildId: string | null = childIdFromPath(contextPath);
+
+  if (!targetChildId) {
+    const nMsg = normalize(message);
+    for (const c of childrenList) {
+      if (nMsg.includes(normalize(c.first_name))) {
+        targetChildId = c.id;
+        break;
+      }
+    }
+  }
+
+  const targetChild = childrenList.find(c => c.id === targetChildId);
+  const targetChildName = targetChild
+    ? `${targetChild.first_name} ${targetChild.last_name}`
+    : '';
+
+  if (role === 'assistante') {
+    const actionType = await classifyIntent(message, contextPath);
+
+    if (actionType) {
+      const childOptions: ChildOption[] = childrenList.map(c => ({
+        id: c.id,
+        name: `${c.first_name} ${c.last_name}`,
+      }));
+
+      if (actionType === 'create_journal') {
+        if (!targetChildId) {
+          return json({
+            reply: childrenList.length > 0
+              ? 'Pour quel enfant souhaitez-vous créer le carnet ?'
+              : "Je ne trouve aucun enfant associé à votre compte.",
+            followUp: childrenList.length > 0
+              ? { type: 'child_picker' as const, childOptions, pendingAction: 'create_journal' as const }
+              : undefined,
+          });
+        }
+
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const menusForToday = await getMenusForDate(db, today);
+
+        if (menusForToday.length === 0) {
+          return json({
+            reply: `Aucun menu n'est configuré pour aujourd'hui. Renseignez d'abord les menus du jour (section "Menus") pour que je puisse créer un carnet complet avec les repas.`,
+          });
+        }
+
+        const detectedMood = extractMoodRuleBased(normalize(message));
+        return json({
+          reply: `Parfait ! Je vais créer le carnet de ${targetChildName}. Quelques questions rapides :`,
+          followUp: {
+            type: 'journal_form' as const,
+            childId: targetChildId,
+            childName: targetChildName,
+            menus: menusForToday
+              .sort((a, b) => {
+                const order = { 'petit-dejeuner': 0, 'dejeuner': 1, 'gouter': 2 } as Record<string, number>;
+                return (order[a.mealType] ?? 9) - (order[b.mealType] ?? 9);
+              })
+              .map(m => ({ mealType: m.mealType, description: m.description, id: m.id })),
+            partial: { mood: detectedMood ?? undefined },
+          },
+        });
+      }
+
+      if (actionType === 'create_news') {
+        if (!targetChildId) {
+          return json({
+            reply: childrenList.length > 0
+              ? 'Pour quel enfant souhaitez-vous publier une news ?'
+              : "Je ne trouve aucun enfant associé à votre compte.",
+            followUp: childrenList.length > 0
+              ? { type: 'child_picker' as const, childOptions, pendingAction: 'create_news' as const }
+              : undefined,
+          });
+        }
+
+        if (message.trim().length < 25) {
+          return json({
+            reply: `Que souhaitez-vous annoncer pour ${targetChildName} ?`,
+            followUp: {
+              type: 'news_content' as const,
+              childId: targetChildId,
+              childName: targetChildName,
+            },
+          });
+        }
+
+        const result = await executeAction(db, 'create_news', targetChildId, targetChildName, user.id, message, napDefaults);
+        return json({
+          reply: result.success ? result.message : `${result.message} Vous pouvez le faire manuellement.`,
+          action: result,
+        });
+      }
+    }
+  }
+
+  if (targetChildId) {
+    const result = await executeAIPipeline(db, {
+      childId: targetChildId,
+      question: message,
+    });
+
+    if (result.success && result.response) {
+      return json({ reply: stripMarkdown(result.response.answer) });
+    }
+
+    return json({ reply: result.error ?? "Je n'ai pas pu répondre à cette question." });
+  }
+
+  const nMsg = normalize(message);
+  const asksAllChildren =
+    nMsg.includes('tous les enfants') ||
+    nMsg.includes('toutes les enfants') ||
+    nMsg.includes('chaque enfant') ||
+    nMsg.includes('l ensemble des enfants');
+
+  if (asksAllChildren) {
+    const names = childrenList.map(c => c.first_name).join(', ');
+    return json({
+      reply: names.length > 0
+        ? `Je peux répondre à des questions enfant par enfant, mais pas analyser tout le groupe en une seule fois. Précisez un prénom parmi : ${names}.`
+        : "Je n'ai pas accès aux données globales du groupe. Précisez un enfant."
+    });
+  }
+
+  const systemMsg = role === 'assistante'
+    ? `Tu es Assistant IA, assistant d'une assistante maternelle. ${SYSTEM_NO_MARKDOWN} Pour les données d'un enfant spécifique, demande de préciser son prénom.`
+    : `Tu es Assistant IA, assistant d'une application de suivi pour parents et assistantes maternelles. ${SYSTEM_NO_MARKDOWN}`;
+
+  try {
+    const raw = await chatCompletion(
+      [
+        { role: 'system', content: systemMsg },
+        ...conversationHistory,
+        { role: 'user', content: message }
+      ],
+      { maxTokens: 300, timeout: 45000 }
+    );
+
+    return json({ reply: stripMarkdown(raw) });
+  } catch {
+    return json({ reply: "Je n'ai pas pu traiter votre message. Réessayez." });
+  }
+};
