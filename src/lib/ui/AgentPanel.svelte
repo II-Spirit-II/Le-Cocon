@@ -34,7 +34,8 @@
   type FollowUpPayload =
     | { type: 'journal_form'; childId: string; childName: string; menus: MenuRef[]; partial?: { mood?: MoodLevel } }
     | { type: 'child_picker'; childOptions: ChildOption[]; pendingAction: 'create_journal' | 'create_news' }
-    | { type: 'news_content'; childId: string; childName: string };
+    | { type: 'news_content'; childId: string; childName: string }
+    | { type: 'confirm_action'; action: 'create_journal' | 'create_news'; childId: string | null; childName?: string };
 
   interface NewsContentState {
     childId: string;
@@ -73,6 +74,7 @@
   let childPickerAction = $state<'create_journal' | 'create_news' | null>(null);
   let newsContent = $state<NewsContentState | null>(null);
 
+  let pendingConfirm = $state<{ action: 'create_journal' | 'create_news'; childId: string | null; childName?: string } | null>(null);
   let pendingMeals = $state<Record<string, MealLevel | null>>({});
   let pendingChanges = $state(3);
   let pendingHealthNote = $state('');
@@ -219,6 +221,7 @@
     childPickerOptions = null;
     childPickerAction = null;
     newsContent = null;
+    pendingConfirm = null;
     inputValue = '';
     pendingMeals = {};
     pendingChanges = 3;
@@ -272,7 +275,13 @@
           : m
       );
 
-      if (data.followUp?.type === 'journal_form') {
+      if (data.followUp?.type === 'confirm_action') {
+        pendingConfirm = {
+          action: data.followUp.action,
+          childId: data.followUp.childId,
+          childName: data.followUp.childName,
+        };
+      } else if (data.followUp?.type === 'journal_form') {
         const initMeals: Record<string, MealLevel | null> = {};
         for (const m of data.followUp.menus) initMeals[m.mealType] = null;
         pendingMeals = initMeals;
@@ -451,6 +460,26 @@
       messages = [...messages, createMessage('assistant', `Que souhaitez-vous annoncer pour ${child.name} ?`)];
       newsContent = { childId: child.id, childName: child.name, inputValue: '' };
     }
+  }
+
+  async function confirmAction() {
+    if (!pendingConfirm) return;
+    const { action, childName } = pendingConfirm;
+    pendingConfirm = null;
+    messages = [...messages, createMessage('user', 'Oui, c\'est ça')];
+
+    const actionVerb = action === 'create_journal' ? 'crée le carnet' : 'publie une news';
+    const suffix = childName ? ` de ${childName}` : '';
+    await sendMessage(`${actionVerb}${suffix}`);
+  }
+
+  async function declineAction() {
+    if (!pendingConfirm) return;
+    pendingConfirm = null;
+    messages = [...messages, createMessage('user', 'Non, ce n\'est pas ce que je voulais')];
+    await tick();
+    messages = [...messages, createMessage('assistant', 'D\'accord ! N\'hésitez pas à reformuler votre demande.')];
+    scrollToBottom();
   }
 
   async function submitNews() {
@@ -673,7 +702,27 @@
         {/key}
       {/if}
 
-      {#if childPickerOptions}
+      {#if pendingConfirm}
+        <div class="agent-form-card" transition:fly={{ y: 20, duration: 280, easing: backOut }}>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              onclick={confirmAction}
+              class="agent-primary-btn flex-1"
+            >
+              Oui, c'est ca
+            </button>
+            <button
+              type="button"
+              onclick={declineAction}
+              class="option-chip flex-1 justify-center"
+            >
+              Non, pas ca
+            </button>
+          </div>
+        </div>
+
+      {:else if childPickerOptions}
         <div class="agent-form-card" transition:fly={{ y: 20, duration: 280, easing: backOut }}>
           <p class="form-label">Choisir un enfant</p>
           <div class="flex flex-wrap gap-2">

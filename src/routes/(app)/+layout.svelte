@@ -13,7 +13,7 @@
     Inbox,
     BarChart3,
     Settings,
-    FileText,
+    MessageSquare,
     LogOut,
     Home,
     ChevronsLeft
@@ -95,7 +95,7 @@
       items.push({
         href: '/app/notes',
         label: "Notes à l'assmat",
-        Icon: FileText,
+        Icon: MessageSquare,
         badge: unseenResponsesCount > 0 ? unseenResponsesCount : undefined
       });
     }
@@ -198,7 +198,14 @@
             {item.label}
           </span>
           {#if item.badge}
-            <span class="absolute top-1 right-1 w-3.5 h-3.5 flex items-center justify-center text-[9px] font-bold rounded-full bg-miel-500 text-white leading-none">
+            <!-- Collapsed: dot on icon corner -->
+            <span class="nav-badge-compact transition-opacity duration-300
+              {sidebarCollapsed ? 'opacity-100' : 'opacity-0 pointer-events-none'}">
+              {item.badge > 9 ? '9+' : item.badge}
+            </span>
+            <!-- Expanded: pill aligned with label -->
+            <span class="nav-badge-expanded transition-opacity duration-300
+              {sidebarCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'}">
               {item.badge > 9 ? '9+' : item.badge}
             </span>
           {/if}
@@ -247,7 +254,7 @@
           <a href="/app/settings" class="rounded-xl overflow-hidden outline-none cursor-pointer block">
             <Avatar src={avatarUrl ?? undefined} name={data.user?.name ?? ''} size="sm" kind="adult" />
           </a>
-          <span class="pointer-events-none fixed z-[100]
+          <span class="pointer-events-none fixed z-100
             px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap
             opacity-0 group-hover:opacity-100 transition-opacity duration-150"
             style="left: 82px; bottom: 28px; background: rgba(255,248,240,0.9); backdrop-filter: blur(12px); color: var(--color-warm-800); border: 1px solid rgba(255,255,255,0.3); box-shadow: 0 4px 16px rgba(194,101,58,0.12);">
@@ -279,7 +286,13 @@
   {/if}
 
   {#if data.user?.role}
-    <BottomNav role={data.user.role} />
+    <BottomNav
+      role={data.user.role}
+      badges={{
+        '/app/inbox': unacknowledgedCount,
+        '/app/notes': unseenResponsesCount,
+      }}
+    />
   {/if}
 
 </div>
@@ -323,6 +336,44 @@
 
   .nav-item-active-compact::before {
     opacity: 1;
+  }
+
+  /* Badge: compact mode — small dot on icon top-right */
+  .nav-badge-compact {
+    position: absolute;
+    top: 2px;
+    left: 32px;
+    min-width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    border-radius: 9999px;
+    background: var(--color-sienne-500);
+    color: white;
+    padding: 0 4px;
+    box-shadow: 0 2px 6px rgba(194, 101, 58, 0.3);
+  }
+
+  /* Badge: expanded mode — pill aligned right of label */
+  .nav-badge-expanded {
+    flex-shrink: 0;
+    min-width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    border-radius: 9999px;
+    background: var(--color-sienne-500);
+    color: white;
+    padding: 0 5px;
+    box-shadow: 0 2px 6px rgba(194, 101, 58, 0.25);
   }
 
   .sidebar-logo-btn {

@@ -92,6 +92,7 @@ export const children = pgTable('children', {
   lastName: varchar('last_name', { length: 100 }).notNull(),
   birthDate: date('birth_date').notNull(),
   avatar: varchar('avatar', { length: 500 }).default(''),
+  careSchedule: jsonb('care_schedule').notNull().default({}),
   assistanteId: uuid('assistante_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

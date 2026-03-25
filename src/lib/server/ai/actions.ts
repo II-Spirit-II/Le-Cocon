@@ -8,6 +8,26 @@ import { chatCompletion } from './ollama';
 
 export type ActionType = 'create_journal' | 'create_news';
 
+export type UnifiedIntent = 'action' | 'query' | 'chat';
+
+export type QueryType =
+  | 'meals_recent'
+  | 'nap_recent'
+  | 'health_last'
+  | 'absences'
+  | 'recap_week'
+  | 'news_recent'
+  | 'general';
+
+export interface ClassificationResult {
+  intent: UnifiedIntent;
+  action?: ActionType;
+  queryType?: QueryType;
+  childName?: string;
+  confidence: number;
+  reasoning: string;
+}
+
 export interface ActionResult {
   type: ActionType;
   success: boolean;
@@ -57,21 +77,83 @@ function normalize(text: string): string {
     .replace(/['']/g, "'");
 }
 
-const INTENT_CLASSIFICATION_PROMPT =
-  `Tu es un classifieur d'intentions pour une application de crèche/assistante maternelle. ` +
-  `Analyse le message de l'utilisatrice et détermine son intention parmi :\n` +
-  `- "create_journal" : elle veut ÉCRIRE/CRÉER/REMPLIR le carnet ou le compte-rendu de la journée d'un enfant. Verbes typiques : "fais", "crée", "remplis", "complète", "saisis", "ajoute" le carnet/journal/CR/fiche.\n` +
-  `- "create_news" : elle veut PUBLIER une actualité, news, annonce ou message destiné aux parents dans les news. Verbes typiques : "publie", "poste", "annonce", "partage", "dis aux parents".\n` +
-  `- "chat" : TOUT le reste — questions, demandes d'info, résumés, bilans, consultations. C'est le choix par défaut.\n\n` +
-  `RÈGLES CRITIQUES :\n` +
-  `- POSER UNE QUESTION sur un enfant = "chat" (ex: "comment s'est passée la semaine de Léo ?", "résume-moi la journée", "qu'a mangé Emma ?", "bilan de la semaine")\n` +
-  `- DEMANDER UN RÉSUMÉ ou un bilan = "chat" (ce n'est PAS une création de carnet)\n` +
-  `- Seule une demande explicite de REMPLIR/CRÉER/FAIRE le carnet = "create_journal"\n` +
-  `- En cas de doute, choisis "chat"\n` +
-  `- Les utilisatrices peuvent faire des fautes d'orthographe, utiliser des abréviations, du langage familier\n` +
-  `- "actu" = actualité = news, "CR" = compte-rendu = carnet, "jurnal" = carnet, "journal" = carnet\n` +
-  `- Le contexte de la page courante t'aide à désambiguïser : "fais-le" sur la page Carnet = create_journal, "fais-le" sur les News = create_news\n\n` +
-  `Réponds UNIQUEMENT avec un JSON sur une seule ligne : {"intent":"create_journal"} ou {"intent":"create_news"} ou {"intent":"chat"}`;
+// ── Unified intent classification ───────────────────────────────────────────
+
+const UNIFIED_CLASSIFICATION_PROMPT = `Tu es le classifieur d'intentions de Le Cocon, une application de crèche/assistante maternelle.
+Tu dois analyser le message de l'utilisatrice et déterminer PRÉCISÉMENT ce qu'elle veut faire.
+
+Il y a 3 types d'intention :
+
+1. "action" — L'utilisatrice veut EFFECTUER une action concrète dans l'application :
+   - create_journal : ÉCRIRE/CRÉER/REMPLIR le carnet de journée d'un enfant
+   - create_news : PUBLIER une actualité/news/annonce pour les parents
+
+2. "query" — L'utilisatrice POSE UNE QUESTION ou DEMANDE DES INFORMATIONS :
+   - meals_recent : questions sur les repas ("qu'a mangé...", "il mange bien ?")
+   - nap_recent : questions sur le sommeil/siestes ("il dort bien ?", "ses siestes ?")
+   - health_last : questions sur la santé ("il a été malade ?", "sa température ?")
+   - absences : questions sur les absences ("il était là ?", "absent quand ?")
+   - recap_week : demande de bilan/résumé ("résumé de la semaine", "comment ça s'est passé ?")
+   - news_recent : consulter les news existantes ("quelles news ?", "quoi de neuf ?")
+   - general : toute autre question factuelle
+
+3. "chat" — Conversation simple sans action ni question sur les données (salutations, remerciements, questions générales)
+
+=== EXEMPLES (TRÈS IMPORTANT) ===
+
+Message: "Il a bien mangé ce midi"
+→ AMBIGUÏTÉ ! C'est une INFORMATION RAPPORTÉE, pas une question.
+   Si l'utilisatrice est sur la page Carnet ou Fiche enfant → action create_journal (elle veut enregistrer)
+   Sinon → query meals_recent (elle décrit sans demander d'action explicite)
+
+Message: "Est-ce qu'il mange bien en ce moment ?"
+→ query meals_recent (question, pas d'action)
+
+Message: "Crée le carnet de Lucas"
+→ action create_journal (demande explicite)
+
+Message: "Fais le CR de la journée"
+→ action create_journal (CR = compte-rendu = carnet)
+
+Message: "Résume-moi la semaine de Léo"
+→ query recap_week (demande d'info, PAS une création de carnet)
+
+Message: "Publie une news : sortie au parc"
+→ action create_news
+
+Message: "Qu'est-ce qui a été publié récemment ?"
+→ query news_recent (question sur les news existantes)
+
+Message: "Merci beaucoup"
+→ chat
+
+Message: "Il a dormi 2h"
+→ action create_journal (information de journée à enregistrer)
+
+Message: "Il dort bien en général ?"
+→ query nap_recent (question)
+
+Message: "fais-le" (après un contexte de conversation)
+→ Regarde l'historique et la page pour déterminer l'action
+
+Message: "oui" / "ok" / "vas-y"
+→ Regarde l'historique pour comprendre ce qui est confirmé
+
+=== RÈGLES ===
+- POSER UNE QUESTION = query (même si ça contient "mange", "dort", etc.)
+- RAPPORTER UN FAIT DE LA JOURNÉE = action create_journal (l'utilisatrice veut enregistrer)
+- DEMANDER UN RÉSUMÉ/BILAN = query recap_week (ce n'est PAS une création de carnet)
+- En cas de doute entre action et query → query (on pourra toujours proposer l'action ensuite)
+- Le contexte de la page aide à désambiguïser les messages courts ("fais-le", "oui")
+- Donne un score de confiance entre 0 et 1 (0.5 = ambiguë, 0.9+ = certain)
+- Si un prénom d'enfant est mentionné, extrais-le dans child_name
+- Abréviations courantes : "CR" = carnet, "actu" = news, "jurnal" = carnet
+
+Réponds UNIQUEMENT avec un JSON valide sur une seule ligne :
+{"intent":"action|query|chat","action":"create_journal|create_news","query_type":"...","child_name":"...","confidence":0.9,"reasoning":"explication courte"}
+
+Les champs action et query_type ne doivent être présents que si intent=action ou intent=query respectivement.
+child_name est optionnel, uniquement si un prénom est mentionné.`;
 
 function contextPathToLabel(contextPath: string): string {
   if (/\/app\/children\/[0-9a-f-]{36}/.test(contextPath)) return 'Fiche enfant';
@@ -85,29 +167,78 @@ function contextPathToLabel(contextPath: string): string {
   return 'Accueil';
 }
 
-export async function classifyIntent(message: string, contextPath?: string): Promise<ActionType | null> {
+export async function classifyUnified(
+  message: string,
+  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
+  contextPath?: string,
+): Promise<ClassificationResult> {
   const pageLabel = contextPath ? contextPathToLabel(contextPath) : null;
   const contextLine = pageLabel ? `\nPage courante : ${pageLabel}` : '';
 
-  try {
-    const raw = await chatCompletion(
-      [
-        { role: 'system', content: INTENT_CLASSIFICATION_PROMPT },
-        { role: 'user', content: `${message}${contextLine}` },
-      ],
-      { temperature: 0, maxTokens: 30, timeout: 10000 }
-    );
-    const match = raw.match(/\{[\s\S]*?\}/);
-    if (match) {
-      const parsed = JSON.parse(match[0]) as { intent?: string };
-      if (parsed.intent === 'create_journal' || parsed.intent === 'create_news') {
-        return parsed.intent;
-      }
-    }
-  } catch {
-    // AI unavailable → no action detected
+  // Build messages with conversation context for disambiguation
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    { role: 'system', content: UNIFIED_CLASSIFICATION_PROMPT },
+  ];
+
+  // Include last 4 exchanges for context (helps with "fais-le", "oui", etc.)
+  const recentHistory = conversationHistory.slice(-8);
+  if (recentHistory.length > 0) {
+    const historyText = recentHistory.map(m => `${m.role === 'user' ? 'Utilisatrice' : 'Assistant'}: ${m.content}`).join('\n');
+    messages.push({ role: 'user', content: `=== HISTORIQUE RÉCENT ===\n${historyText}\n\n=== NOUVEAU MESSAGE ===\n${message}${contextLine}` });
+  } else {
+    messages.push({ role: 'user', content: `${message}${contextLine}` });
   }
-  return null;
+
+  const fallback: ClassificationResult = { intent: 'chat', confidence: 0.3, reasoning: 'fallback' };
+
+  try {
+    const raw = await chatCompletion(messages, { temperature: 0, maxTokens: 150, timeout: 12000 });
+    const match = raw.match(/\{[\s\S]*?\}/);
+    if (!match) return fallback;
+
+    const parsed = JSON.parse(match[0]) as Record<string, unknown>;
+    const intent = parsed.intent as string;
+
+    if (intent === 'action') {
+      const action = parsed.action as string | undefined;
+      if (action !== 'create_journal' && action !== 'create_news') return fallback;
+      return {
+        intent: 'action',
+        action: action,
+        childName: typeof parsed.child_name === 'string' ? parsed.child_name : undefined,
+        confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.7,
+        reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : '',
+      };
+    }
+
+    if (intent === 'query') {
+      const validQueryTypes: QueryType[] = ['meals_recent', 'nap_recent', 'health_last', 'absences', 'recap_week', 'news_recent', 'general'];
+      const queryType = validQueryTypes.includes(parsed.query_type as QueryType)
+        ? (parsed.query_type as QueryType)
+        : 'general';
+      return {
+        intent: 'query',
+        queryType,
+        childName: typeof parsed.child_name === 'string' ? parsed.child_name : undefined,
+        confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.7,
+        reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : '',
+      };
+    }
+
+    return {
+      intent: 'chat',
+      confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.8,
+      reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : '',
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+// Keep backward compat for any remaining callers
+export async function classifyIntent(message: string, contextPath?: string): Promise<ActionType | null> {
+  const result = await classifyUnified(message, [], contextPath);
+  return result.intent === 'action' ? (result.action ?? null) : null;
 }
 
 function mealLevelToQuantity(level: MealLevel): MealEntry['quantity'] {

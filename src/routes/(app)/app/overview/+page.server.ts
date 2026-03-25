@@ -1,12 +1,12 @@
 import type { PageServerLoad } from './$types';
 import { getAllDailyLogs } from '$lib/domain/daily_logs';
 import { getMenusForDate } from '$lib/domain/menus';
-import { listCalendarEventsForAssistant, countUnacknowledgedNotes, countUnseenResponses } from '$lib/domain/parent_notes';
+import { listCalendarEventsForAssistant, listCalendarEventsForParent, countUnacknowledgedNotes, countUnseenResponses } from '$lib/domain/parent_notes';
 import { getNewsForChildren } from '$lib/domain/news';
 import { requireAuth, toLocalDateStr } from '$lib/server/helpers';
 import { getAvatarPublicUrl } from '$lib/server/storage';
 import { getChildAvatarUrl } from '$lib/utils/avatar';
-import type { MealEntry, NapEntry, HealthEntry, MoodLevel } from '$lib/types';
+import type { MealEntry, NapEntry, HealthEntry, MoodLevel, CareSchedule } from '$lib/types';
 
 function getMonthRange(year: number, month: number): { from: string; to: string } {
   const from = new Date(year, month, 1);
@@ -42,7 +42,7 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
     getNewsForChildren(db, childIds, 6),
     role === 'assistante'
       ? listCalendarEventsForAssistant(db, { from: monthFrom, to: monthTo })
-      : Promise.resolve([])
+      : listCalendarEventsForParent(db, user.id, { from: monthFrom, to: monthTo })
   ]);
 
   const absentChildIds = new Set(todayAbsences.map((a) => a.childId));
@@ -67,6 +67,7 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
       health: (log?.health ?? null) as HealthEntry | null,
       changes: log?.changes ?? 0,
       notes: log?.notes ?? '',
+      careSchedule: child.careSchedule ?? {} as CareSchedule,
     };
   }));
 
@@ -97,6 +98,7 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
     presentCount,
     journaledCount: loggedChildIds.size,
     hasTodayMenu: todayMenus.length > 0,
+    todayMenus: todayMenus.map(m => ({ mealType: m.mealType, description: m.description })),
     pendingCount,
     moodCounts,
     recentNews,

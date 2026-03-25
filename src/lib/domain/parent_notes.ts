@@ -338,6 +338,52 @@ export async function listCalendarEventsForAssistant(
   }
 }
 
+// Parent-scoped calendar events: only notes created by this parent
+export async function listCalendarEventsForParent(
+  db: DrizzleDB,
+  parentId: string,
+  options: CalendarQueryOptions
+): Promise<CalendarEvent[]> {
+  try {
+    const conditions = [
+      eq(parentNotes.createdById, parentId),
+      lte(parentNotes.startDate, options.to),
+      gte(parentNotes.endDate, options.from),
+    ];
+    if (options.childId) conditions.push(eq(parentNotes.childId, options.childId));
+    if (options.kinds?.length) {
+      const kindConditions = options.kinds.map(k => eq(parentNotes.kind, k));
+      conditions.push(sql`(${sql.join(kindConditions, sql` OR `)})`);
+    }
+
+    const records = await db.select({
+      note: parentNotes,
+      childFirstName: children.firstName,
+      childLastName: children.lastName,
+    })
+      .from(parentNotes)
+      .leftJoin(children, eq(parentNotes.childId, children.id))
+      .where(and(...conditions))
+      .orderBy(asc(parentNotes.startDate));
+
+    return records.map(r => ({
+      id: r.note.id,
+      childId: r.note.childId,
+      childName: r.childFirstName && r.childLastName
+        ? `${r.childFirstName} ${r.childLastName}`
+        : r.note.childId,
+      kind: r.note.kind,
+      startDate: r.note.startDate ?? '',
+      endDate: r.note.endDate ?? '',
+      content: r.note.content,
+      acknowledgedAt: r.note.assistantAcknowledgedAt?.toISOString() ?? null,
+      createdAt: r.note.createdAt.toISOString(),
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export async function getCalendarInsights(
   db: DrizzleDB,
   childId?: string

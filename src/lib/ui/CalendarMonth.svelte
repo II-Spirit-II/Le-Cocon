@@ -8,9 +8,11 @@
     events: CalendarEvent[];
     onEventClick?: (event: CalendarEvent) => void;
     onNavigate?: (year: number, month: number) => void;
+    onDaySelect?: (dateKey: string) => void;
+    onDayHover?: (dateKey: string | null) => void;
   }
 
-  let { year, month, events, onEventClick, onNavigate }: Props = $props();
+  let { year, month, events, onEventClick, onNavigate, onDaySelect, onDayHover }: Props = $props();
 
   const dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
   const dayNamesShort = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
@@ -164,14 +166,12 @@
 
   function handleDayClick(dayInfo: { dateKey: string; isCurrentMonth: boolean }) {
     if (!dayInfo.isCurrentMonth) return;
-    const evts = getEventsForDay(dayInfo.dateKey);
-    if (evts.length > 0) {
-      if (isMobile) {
-        selectedDayKey = selectedDayKey === dayInfo.dateKey ? null : dayInfo.dateKey;
-      } else {
-        onEventClick?.(evts[0]);
-      }
-    }
+
+    // Track selected day visually
+    selectedDayKey = selectedDayKey === dayInfo.dateKey ? null : dayInfo.dateKey;
+
+    // Notify parent of day selection
+    onDaySelect?.(dayInfo.dateKey);
   }
 
   function getEventStyle(kind: string): string {
@@ -255,18 +255,17 @@
         <!-- Mobile cell -->
         <button
           type="button"
-          class="cal-cell sm:hidden flex flex-col items-center py-1 rounded-lg transition-[color,background-color,transform] duration-150
-            {dayInfo.isCurrentMonth ? '' : 'opacity-30'}
+          class="cal-cell-mobile sm:hidden flex flex-col items-center py-1 rounded-lg transition-[color,background-color,transform] duration-150
+            {dayInfo.isCurrentMonth ? 'cursor-pointer' : 'opacity-30 cursor-default'}
             {dayInfo.isToday && !isSelected ? 'bg-miel-400/12' : ''}
-            {isSelected ? 'bg-sienne-400/15 scale-105' : ''}
-            {hasEvents ? 'cursor-pointer' : 'cursor-default'}"
+            {isSelected ? 'cal-cell-selected bg-miel-400/15 scale-105' : ''}"
           onclick={() => handleDayClick(dayInfo)}
-          disabled={!hasEvents}
+          disabled={!dayInfo.isCurrentMonth}
         >
           <span
-            class="inline-flex items-center justify-center w-7 h-7 text-[11px] font-medium rounded-full transition-colors
-              {dayInfo.isToday ? 'bg-miel-500 text-white font-bold' : ''}
-              {!dayInfo.isToday && dayInfo.isCurrentMonth ? 'text-warm-800' : ''}
+            class="cal-day-number inline-flex items-center justify-center w-7 h-7 text-[11px] font-medium rounded-full transition-colors
+              {dayInfo.isToday || isSelected ? 'bg-miel-500 text-white font-bold' : ''}
+              {!dayInfo.isToday && !isSelected && dayInfo.isCurrentMonth ? 'text-warm-800' : ''}
               {!dayInfo.isCurrentMonth ? 'text-warm-400' : ''}"
           >
             {dayInfo.day}
@@ -283,17 +282,22 @@
         </button>
 
         <!-- Desktop cell -->
-        <div
-          class="hidden sm:block p-1 rounded-xl border transition-colors
-            {dayInfo.isCurrentMonth ? 'glass-2 border-warm-100/15' : 'bg-warm-50/10 border-transparent'}
+        <button
+          type="button"
+          class="cal-cell-desktop hidden sm:block p-1 rounded-xl border text-left w-full
+            {dayInfo.isCurrentMonth ? 'glass-2 border-warm-100/15 cursor-pointer' : 'bg-warm-50/10 border-transparent cursor-default'}
             {dayInfo.isToday ? 'ring-2 ring-miel-400 ring-offset-1' : ''}
-            {hasEvents ? 'hover:border-white/30' : ''}"
+            {isSelected && !dayInfo.isToday ? 'cal-cell-selected ring-2 ring-miel-400/60 ring-offset-1' : ''}"
+          onclick={() => handleDayClick(dayInfo)}
+          onmouseenter={() => dayInfo.isCurrentMonth && onDayHover?.(dayInfo.dateKey)}
+          onmouseleave={() => onDayHover?.(null)}
+          disabled={!dayInfo.isCurrentMonth}
         >
           <div class="text-right mb-1">
             <span
-              class="inline-flex items-center justify-center w-6 h-6 text-xs rounded-full
-                {dayInfo.isToday ? 'bg-miel-500 text-white font-semibold' : ''}
-                {!dayInfo.isToday && dayInfo.isCurrentMonth ? 'text-warm-700' : ''}
+              class="cal-day-number inline-flex items-center justify-center w-6 h-6 text-xs rounded-full transition-colors
+                {dayInfo.isToday || isSelected ? 'bg-miel-500 text-white font-semibold' : ''}
+                {!dayInfo.isToday && !isSelected && dayInfo.isCurrentMonth ? 'text-warm-700' : ''}
                 {!dayInfo.isCurrentMonth ? 'text-warm-400' : ''}"
             >
               {dayInfo.day}
@@ -304,15 +308,16 @@
             <div class="space-y-0.5">
               {#each dayEvents.slice(0, 2) as event}
                 {@const Icon = getEventIcon(event.kind)}
-                <button
-                  type="button"
-                  onclick={() => onEventClick?.(event)}
-                  class="w-full text-left px-1.5 py-0.5 rounded text-xs truncate border cursor-pointer {getEventStyle(event.kind)} hover:opacity-80 transition-opacity"
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div
+                  class="w-full text-left px-1.5 py-0.5 rounded text-xs truncate border cursor-pointer hover:opacity-80 transition-opacity {getEventStyle(event.kind)}"
                   title="{event.childName} - {event.content}"
+                  onclick={(e) => { e.stopPropagation(); onEventClick?.(event); }}
                 >
                   <Icon size={11} class="inline-block mr-0.5 -mt-px" />
                   <span class="font-medium">{event.childName.split(' ')[0]}</span>
-                </button>
+                </div>
               {/each}
               {#if dayEvents.length > 2}
                 <div class="text-xs text-warm-500 px-1.5">
@@ -321,7 +326,7 @@
               {/if}
             </div>
           {/if}
-        </div>
+        </button>
       {/each}
     </div>
   </div>
@@ -388,8 +393,35 @@
     }
   }
 
-  .cal-cell:disabled {
-    opacity: 1;
+  /* Mobile: hover/active — only on unselected cells */
+  .cal-cell-mobile:not(:disabled):not(.cal-cell-selected):hover .cal-day-number {
+    background: rgba(232, 145, 58, 0.15);
+    color: var(--color-miel-700);
+  }
+  .cal-cell-mobile:not(:disabled):active {
+    transform: scale(0.95);
+  }
+
+  /* Desktop: transitions */
+  .cal-cell-desktop:not(:disabled) {
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+  }
+
+  /* Desktop: hover — only on unselected cells (selected keeps solid miel) */
+  .cal-cell-desktop:not(:disabled):not(.cal-cell-selected):hover {
+    border-color: rgba(232, 145, 58, 0.25);
+    background: rgba(255, 248, 238, 0.6);
+  }
+  .cal-cell-desktop:not(:disabled):not(.cal-cell-selected):hover .cal-day-number {
+    background: rgba(232, 145, 58, 0.15);
+    color: var(--color-miel-700);
+    font-weight: 600;
+  }
+
+  /* Selected cell: warm glow to reinforce the active state */
+  .cal-cell-desktop.cal-cell-selected {
+    background: rgba(232, 145, 58, 0.08);
+    border-color: rgba(232, 145, 58, 0.2);
   }
 
   @keyframes slide-down {

@@ -131,7 +131,7 @@
 >
   {#snippet actions()}
     {#if !isAsmmat && data.children.length > 0}
-      <Button variant="primary" onclick={() => showNewNoteForm = true}>
+      <Button variant="primary" href="/app/notes/new">
         + Envoyer une note
       </Button>
     {/if}
@@ -304,7 +304,7 @@
         <p class="text-warm-700 mb-6 max-w-md mx-auto">
           Envoyez votre première note pour informer l'assistante maternelle d'une absence, d'un retard ou d'une information importante.
         </p>
-        <Button variant="primary" onclick={() => showNewNoteForm = true}>
+        <Button variant="primary" href="/app/notes/new">
           Envoyer une note
         </Button>
       </div>
@@ -354,41 +354,37 @@
               {/if}
 
               <!-- Contenu -->
-              <p class="text-warm-800 whitespace-pre-wrap break-words">
+              <p class="text-warm-800 whitespace-pre-wrap wrap-break-word">
                 {note.content}
               </p>
 
               {#if note.assistantResponse}
-                <div class="mt-3 p-3 bg-miel-50 rounded-lg border border-miel-100 {isUnseenResponse ? 'border-miel-300' : ''}">
-                  <div class="flex items-center justify-between mb-1">
-                    <p class="text-xs font-medium text-miel-700">
-                      Réponse de l'assistante :
-                    </p>
-                    {#if isUnseenResponse}
-                      <form
-                        method="POST"
-                        action="?/markAsSeen"
-                        use:enhance={() => {
-                          return async ({ update }) => {
-                            update();
-                          };
-                        }}
-                        class="inline"
-                      >
-                        <input type="hidden" name="noteId" value={note.id} />
-                        <button
-                          type="submit"
-                          class="text-xs text-miel-600 hover:text-miel-800 underline"
-                        >
-                          Marquer comme lu
-                        </button>
-                      </form>
-                    {/if}
+                {#if isUnseenResponse}
+                  <div class="mt-3 flex items-center gap-3 p-3 bg-bleu-400/8 rounded-xl border border-bleu-400/20">
+                    <div class="flex-1 min-w-0">
+                      <p class="text-xs font-semibold text-warm-800 mb-0.5">Reponse de l'assistante</p>
+                      <p class="text-sm text-warm-700">{note.assistantResponse}</p>
+                    </div>
+                    <form
+                      method="POST"
+                      action="?/markAsSeen"
+                      use:enhance={() => {
+                        return async ({ update }) => { update(); };
+                      }}
+                      class="shrink-0"
+                    >
+                      <input type="hidden" name="noteId" value={note.id} />
+                      <Button type="submit" variant="primary" size="sm">
+                        Marquer comme lu
+                      </Button>
+                    </form>
                   </div>
-                  <p class="text-sm text-warm-800">
-                    {note.assistantResponse}
-                  </p>
-                </div>
+                {:else}
+                  <div class="mt-3 p-3 bg-miel-50 rounded-lg border border-miel-100">
+                    <p class="text-xs font-medium text-miel-700 mb-1">Reponse de l'assistante :</p>
+                    <p class="text-sm text-warm-800">{note.assistantResponse}</p>
+                  </div>
+                {/if}
               {/if}
 
               <!-- Delete button (only if not acknowledged) -->

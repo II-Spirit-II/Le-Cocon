@@ -641,7 +641,7 @@
 
         <Card padding="none">
 
-          <div class="flex items-center justify-between gap-6 px-8 py-6 bg-gradient-to-r from-miel-50 via-warm-50 to-white border-b border-warm-100 rounded-t-2xl">
+          <div class="flex items-center justify-between gap-6 px-8 py-6 bg-linear-to-r from-miel-50 via-warm-50 to-white border-b border-warm-100 rounded-t-2xl">
             <div class="flex items-center gap-4 min-w-0">
               <div class="w-12 h-12 rounded-2xl bg-miel-100 flex items-center justify-center shrink-0">
                 <Sparkles size={24} class="text-miel-600" />

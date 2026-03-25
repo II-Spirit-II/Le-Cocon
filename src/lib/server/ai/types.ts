@@ -27,6 +27,8 @@ export interface AIQueryInput {
   childId: string;
   question: string;
   timeframeDays?: number;
+  /** Pre-classified query type from unified classifier — skips regex intent detection */
+  queryType?: 'meals_recent' | 'nap_recent' | 'health_last' | 'absences' | 'recap_week' | 'news_recent' | 'general';
 }
 
 export interface AIQueryResult {

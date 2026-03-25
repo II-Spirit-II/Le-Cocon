@@ -3,7 +3,7 @@
  */
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { getChildById, updateChildAvatar } from '$lib/domain/children';
+import { getChildById, updateChildAvatar, updateChild } from '$lib/domain/children';
 import { createInviteCode, getInviteCodesForChild, deleteInviteCode } from '$lib/domain/invites';
 import { getDailyLogsForChild } from '$lib/domain/daily_logs';
 import { getNewsForChild } from '$lib/domain/news';
@@ -11,6 +11,8 @@ import { getCalendarInsights, countUnacknowledgedNotes } from '$lib/domain/paren
 import { uploadChildAvatar, getAvatarPublicUrl } from '$lib/server/storage';
 import { getChildAvatarUrl } from '$lib/utils/avatar';
 import { requireAuth, requireRole, assertChildAccess, toLocalDateStr } from '$lib/server/helpers';
+import { careScheduleSchema } from '$lib/server/validation';
+import type { CareSchedule } from '$lib/types';
 
 /** Monday of the week containing `date` (ISO string YYYY-MM-DD). */
 function getWeekStart(dateStr: string): string {
@@ -165,5 +167,32 @@ export const actions: Actions = {
     if (!updated) return fail(500, { error: 'Erreur lors de la suppression' });
 
     return { avatarDeleted: true };
+  },
+
+  updateSchedule: async ({ params, request, locals }) => {
+    requireRole(locals.user, 'assistante');
+
+    const child = await getChildById(locals.db, params.id);
+    assertChildAccess(child, locals.user);
+
+    const formData = await request.formData();
+    const raw = formData.get('careSchedule')?.toString() ?? '{}';
+
+    let careSchedule: CareSchedule = {};
+    try {
+      const parsed = JSON.parse(raw);
+      const result = careScheduleSchema.safeParse(parsed);
+      if (!result.success) {
+        return fail(400, { error: result.error.issues[0]?.message ?? 'Horaires invalides' });
+      }
+      careSchedule = result.data ?? {};
+    } catch {
+      return fail(400, { error: 'Format invalide' });
+    }
+
+    const ok = await updateChild(locals.db, params.id, { careSchedule });
+    if (!ok) return fail(500, { error: 'Erreur lors de la sauvegarde' });
+
+    return { scheduleUpdated: true };
   }
 };

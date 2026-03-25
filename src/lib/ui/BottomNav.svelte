@@ -4,14 +4,15 @@
   import { cubicInOut } from 'svelte/easing';
   import { agentPanelOpen } from '$lib/stores/agent.svelte';
   import {
-    Home, BookOpen, Newspaper, Settings, BarChart3
+    Home, BookOpen, Newspaper, Settings, BarChart3, Inbox, MessageSquare
   } from 'lucide-svelte';
 
   interface Props {
     role: 'assistante' | 'parent';
+    badges?: Record<string, number>;
   }
 
-  let { role }: Props = $props();
+  let { role, badges = {} }: Props = $props();
 
   const items = $derived.by(() => {
     if (role === 'parent') {
@@ -19,6 +20,7 @@
         { href: '/app/children',  label: 'Carnet',      Icon: BookOpen  },
         { href: '/app/feed',      label: 'News',       Icon: Newspaper },
         { href: '/app/overview',  label: 'Accueil',     Icon: Home      },
+        { href: '/app/notes',     label: 'Notes',       Icon: MessageSquare },
         { href: '/app/settings',  label: 'Paramètres',  Icon: Settings  },
       ];
     }
@@ -26,7 +28,7 @@
       { href: '/app/children',  label: 'Carnet',      Icon: BookOpen  },
       { href: '/app/feed',      label: 'News',       Icon: Newspaper },
       { href: '/app/overview',  label: 'Accueil',     Icon: Home      },
-      { href: '/app/stats',     label: 'Stats',       Icon: BarChart3 },
+      { href: '/app/inbox',     label: 'Messages',    Icon: Inbox     },
       { href: '/app/settings',  label: 'Paramètres',  Icon: Settings  },
     ];
   });
@@ -57,6 +59,9 @@
     >
       <span class="btm-nav-icon">
         <NavIcon size={20} strokeWidth={active ? 2.2 : 1.8} />
+        {#if badges[item.href]}
+          <span class="btm-badge">{badges[item.href] > 9 ? '9+' : badges[item.href]}</span>
+        {/if}
       </span>
       <span class="btm-nav-label">{item.label}</span>
     </a>
@@ -137,6 +142,25 @@
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 100%;
+  }
+
+  .btm-badge {
+    position: absolute;
+    top: -2px;
+    right: 2px;
+    min-width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 1;
+    border-radius: 9999px;
+    background: var(--color-sienne-500);
+    color: white;
+    padding: 0 3px;
+    box-shadow: 0 1px 4px rgba(194, 101, 58, 0.35);
   }
 
   @media (prefers-reduced-motion: reduce) {

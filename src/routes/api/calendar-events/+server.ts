@@ -1,12 +1,12 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { requireRole, createRateLimiter } from '$lib/server/helpers';
-import { listCalendarEventsForAssistant } from '$lib/domain/parent_notes';
+import { requireAuth, createRateLimiter } from '$lib/server/helpers';
+import { listCalendarEventsForAssistant, listCalendarEventsForParent } from '$lib/domain/parent_notes';
 
 const checkRateLimit = createRateLimiter(30, 60_000);
 
 export const GET: RequestHandler = async ({ locals, url }) => {
-  requireRole(locals.user, 'assistante');
+  requireAuth(locals.user);
   if (!checkRateLimit(locals.user.id)) {
     return json({ error: 'Trop de requêtes' }, { status: 429 });
   }
@@ -20,7 +20,10 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     return json({ error: 'Paramètres from/to requis au format YYYY-MM-DD' }, { status: 400 });
   }
 
-  const events = await listCalendarEventsForAssistant(db, { from, to });
+  const events = locals.user.role === 'parent'
+    ? await listCalendarEventsForParent(db, locals.user.id, { from, to })
+    : await listCalendarEventsForAssistant(db, { from, to });
+
   return json(events, {
     headers: { 'Cache-Control': 'private, max-age=300' }
   });

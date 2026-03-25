@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import type { CalendarEvent } from '$lib/domain/parent_notes';
-  import type { MealEntry, NapEntry, HealthEntry, MoodLevel } from '$lib/types';
+  import type { MealEntry, NapEntry, HealthEntry, MoodLevel, CareWeekday } from '$lib/types';
   import { browser } from '$app/environment';
   import { agentPanelOpen } from '$lib/stores/agent.svelte';
   import { FadeIn, CalendarMonth, Avatar, Button, PlateVisual } from '$lib/ui';
@@ -16,13 +16,7 @@
   interface Props { data: PageData; }
   let { data }: Props = $props();
 
-  type OverviewChild = {
-    id: string; firstName: string; lastName: string;
-    avatarPath: string | null; avatarUrl: string | null;
-    isAbsent: boolean; hasLog: boolean; mood: MoodLevel | null;
-    meals: MealEntry[]; nap: NapEntry | null;
-    health: HealthEntry | null; changes: number; notes: string;
-  };
+  type OverviewChild = typeof data.children[number];
 
   const isAsmmat = $derived(data.role === 'assistante');
 
@@ -80,15 +74,15 @@
   type Mood = keyof typeof MOOD_CFG;
 
   // -- Derived data (assistante) --
-  const absentCount    = $derived(data.children.filter((c: OverviewChild) => c.isAbsent).length);
-  const toJournalCount = $derived(data.children.filter((c: OverviewChild) => !c.isAbsent && !c.hasLog).length);
+  const absentCount    = $derived(data.children.filter((c) => c.isAbsent).length);
+  const toJournalCount = $derived(data.children.filter((c) => !c.isAbsent && !c.hasLog).length);
   const journalPct     = $derived(data.presentCount > 0 ? Math.round((data.journaledCount / data.presentCount) * 100) : 0);
   const allDone        = $derived(journalPct === 100 && data.presentCount > 0);
 
   const sortedChildren = $derived.by(() => {
-    const toJournal = data.children.filter((c: OverviewChild) => !c.isAbsent && !c.hasLog);
-    const journaled = data.children.filter((c: OverviewChild) => !c.isAbsent && c.hasLog);
-    const absent    = data.children.filter((c: OverviewChild) => c.isAbsent);
+    const toJournal = data.children.filter((c) => !c.isAbsent && !c.hasLog);
+    const journaled = data.children.filter((c) => !c.isAbsent && c.hasLog);
+    const absent    = data.children.filter((c) => c.isAbsent);
     return [...toJournal, ...journaled, ...absent];
   });
 
@@ -203,6 +197,65 @@
     calLoading = false;
   }
 
+  // -- Day selection for "present children" panel --
+  let calSelectedDay = $state<string | null>(null);
+  let calHoveredDay = $state<string | null>(null);
+
+  // Hover takes priority over click for the sidebar display
+  const activeDay = $derived(calHoveredDay ?? calSelectedDay ?? data.today);
+
+  const JS_DAY_TO_WEEKDAY: CareWeekday[] = [
+    'dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'
+  ];
+
+  const DAY_LABELS_FULL: Record<CareWeekday, string> = {
+    lundi: 'Lundi', mardi: 'Mardi', mercredi: 'Mercredi', jeudi: 'Jeudi',
+    vendredi: 'Vendredi', samedi: 'Samedi', dimanche: 'Dimanche',
+  };
+
+  const presentChildren = $derived.by(() => {
+    const dayStr = activeDay;
+    const date = new Date(dayStr + 'T00:00:00');
+    const weekday = JS_DAY_TO_WEEKDAY[date.getDay()];
+    const absentIds = new Set(
+      calEvents
+        .filter(e => e.kind === 'absence' && e.startDate <= dayStr && e.endDate >= dayStr)
+        .map(e => e.childId)
+    );
+
+    return data.children
+      .filter((c) => {
+        if (absentIds.has(c.id)) return false;
+        const schedule = c.careSchedule;
+        if (!schedule || Object.keys(schedule).length === 0) return true;
+        return !!schedule[weekday];
+      })
+      .map(c => {
+        const schedule = c.careSchedule;
+        const slot = schedule?.[weekday];
+        return {
+          id: c.id,
+          firstName: c.firstName,
+          lastName: c.lastName,
+          avatarUrl: c.avatarUrl,
+          start: slot?.start ?? null,
+          end: slot?.end ?? null,
+        };
+      });
+  });
+
+  const calSelectedWeekday = $derived.by(() => {
+    const date = new Date(activeDay + 'T00:00:00');
+    return JS_DAY_TO_WEEKDAY[date.getDay()];
+  });
+
+  const calSelectedLabel = $derived.by(() => {
+    if (activeDay === data.today) return "Aujourd'hui";
+    return new Date(activeDay + 'T00:00:00').toLocaleDateString('fr-FR', {
+      weekday: 'long', day: 'numeric', month: 'short',
+    });
+  });
+
   function formatEventDate(dateStr: string): string {
     const date = new Date(dateStr);
     return date.toLocaleDateString('fr-FR', {
@@ -261,6 +314,12 @@
     'agitee': 'Agitée',
     'normale': 'Normale',
     'paisible': 'Paisible'
+  };
+
+  const MENU_TYPE_LABELS: Record<string, string> = {
+    'petit-dejeuner': 'Petit-déjeuner',
+    'dejeuner': 'Déjeuner',
+    'gouter': 'Goûter'
   };
 
   function formatNapDuration(nap: NapEntry): string {
@@ -378,9 +437,9 @@
     visibility: hidden;
   }
 
-  /* Desktop: tabs in grid overlay, stretch to fill */
+  /* Desktop: tabs in grid overlay, stretch to fill (assistante only) */
   @media (min-width: 640px) {
-    .bloc2-content {
+    .bloc2-content:not(.bloc2-content-flow) {
       display: grid;
       grid-template: 1fr / 1fr;
       overflow: visible;
@@ -388,7 +447,7 @@
       height: auto !important;
       flex: 1;
     }
-    .bloc2-tab {
+    .bloc2-content:not(.bloc2-content-flow) > .bloc2-tab {
       position: static;
       grid-area: 1 / 1;
     }
@@ -493,6 +552,113 @@
     }
   }
 
+  /* Calendar + present sidebar layout */
+  .calendar-with-sidebar {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 0.75rem;
+  }
+  .calendar-main {
+    flex: 1;
+    min-height: 0;
+  }
+  .present-sidebar {
+    display: flex;
+    flex-direction: column;
+    padding: 0.75rem;
+    background: rgba(255, 248, 238, 0.45);
+    border: 1px solid rgba(255, 240, 220, 0.35);
+    border-radius: 1rem;
+  }
+  .present-sidebar-header {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin-bottom: 0.25rem;
+  }
+  .present-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    overflow-y: auto;
+    max-height: 200px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(184, 158, 134, 0.3) transparent;
+  }
+  .present-list::-webkit-scrollbar { width: 3px; }
+  .present-list::-webkit-scrollbar-track { background: transparent; }
+  .present-list::-webkit-scrollbar-thumb { background: rgba(184, 158, 134, 0.3); border-radius: 3px; }
+  .present-child {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.5rem;
+    border-radius: 0.625rem;
+    transition: background-color 0.15s ease;
+    text-decoration: none;
+  }
+  .present-child:hover {
+    background: rgba(255, 255, 255, 0.4);
+  }
+
+  /* Staggered entrance for each child row */
+  .present-child-enter {
+    animation: present-slide-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: var(--stagger, 0ms);
+  }
+  @keyframes present-slide-in {
+    from {
+      opacity: 0;
+      transform: translateX(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  /* Day label flash on change */
+  .present-day-label {
+    transition: color 0.2s ease;
+  }
+
+  /* Counter fade-in */
+  .present-count-enter {
+    animation: present-fade 0.3s ease 0.15s both;
+  }
+  .present-empty-enter {
+    animation: present-fade 0.3s ease both;
+  }
+  @keyframes present-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .present-child-enter,
+    .present-count-enter,
+    .present-empty-enter {
+      animation: none !important;
+    }
+  }
+
+  @media (min-width: 640px) {
+    .calendar-with-sidebar {
+      flex-direction: row;
+    }
+    .present-sidebar {
+      width: 170px;
+      flex-shrink: 0;
+      max-height: none;
+    }
+    .present-list {
+      max-height: none;
+      flex: 1;
+      min-height: 0;
+    }
+  }
+
   /* Subtle scrollbar for news sidebar */
   .news-scroll {
     scrollbar-width: thin;
@@ -509,12 +675,19 @@
     border-radius: 4px;
   }
 
-  .action-row {
-    transition: background-color 0.15s ease;
+  /* Parent dashboard: natural scroll, calendar stretches vertically */
+  @media (min-width: 1024px) {
+    .parent-dashboard {
+      height: auto;
+      overflow: visible;
+    }
+    .parent-dashboard .calendar-with-sidebar {
+      min-height: 540px;
+    }
   }
-  .action-row:active {
-    transform: scale(0.99);
-  }
+
+  /* Parent dashboard: keep mobile-style height-managed tabs on desktop
+     so the calendar can expand freely instead of being compressed by the grid overlay */
 
   /* Parent child hero card */
   .parent-hero {
@@ -602,9 +775,9 @@
      PARENT DASHBOARD
      ═══════════════════════════════════════════════════════════ -->
 {#if !isAsmmat}
-  <div class="dashboard-grid">
+  <div class="dashboard-grid parent-dashboard">
 
-    <!-- BLOC 1 — Greeting + status -->
+    <!-- BLOC 1 — Greeting + Météo + Status + Menu -->
     <FadeIn>
       <div class="glass-1 rounded-3xl p-5 sm:p-6">
         <div class="flex items-start justify-between gap-4">
@@ -614,18 +787,31 @@
             </h1>
             <p class="text-sm text-warm-500 mt-0.5">{formatToday(data.today)}</p>
           </div>
-          {#if data.pendingCount > 0}
-            <a href="/app/notes"
-              class="shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl bg-sienne-400/10 ring-1 ring-sienne-400/20 hover:bg-sienne-400/15 transition-colors">
-              <span class="w-2 h-2 rounded-full bg-sienne-500 animate-pulse"></span>
-              <span class="text-xs font-semibold text-sienne-600">
-                {data.pendingCount} réponse{data.pendingCount > 1 ? 's' : ''}
-              </span>
-            </a>
-          {/if}
+          <div class="flex items-center gap-2.5 shrink-0">
+            <!-- Météo orb -->
+            {#if totalLogged > 0}
+              <div class="flex items-center gap-1.5 text-xs font-medium {meteo.iconClass}">
+                <div class="w-7 h-7 rounded-full flex items-center justify-center"
+                  style="background: radial-gradient(circle at 35% 35%, white 0%, {meteo.color1} 60%, {meteo.color2} 100%); box-shadow: 0 2px 8px {meteo.glow};">
+                  <MeteoIcon size={13} class={meteo.iconClass} />
+                </div>
+                <span class="hidden sm:inline">{meteo.label}</span>
+              </div>
+            {/if}
+            <!-- Pending responses badge -->
+            {#if data.pendingCount > 0}
+              <a href="/app/notes"
+                class="flex items-center gap-2 px-3 py-2 rounded-xl bg-sienne-400/10 ring-1 ring-sienne-400/20 hover:bg-sienne-400/15 transition-colors">
+                <span class="w-2 h-2 rounded-full bg-sienne-500 animate-pulse"></span>
+                <span class="text-xs font-semibold text-sienne-600">
+                  {data.pendingCount} réponse{data.pendingCount > 1 ? 's' : ''}
+                </span>
+              </a>
+            {/if}
+          </div>
         </div>
 
-        <!-- Simple status line -->
+        <!-- Status indicators -->
         {#if data.children.length > 0}
           <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
             {#if data.journaledCount > 0}
@@ -639,176 +825,300 @@
                 Pas encore de carnet aujourd'hui
               </span>
             {/if}
+            {#if totalLogged > 0}
+              <span class="flex items-center gap-1.5 text-warm-600">
+                <span class="w-2 h-2 rounded-full {meteo.iconClass === 'text-mousse-500' || meteo.iconClass === 'text-mousse-400' ? 'bg-mousse-400' : meteo.iconClass === 'text-argile-400' ? 'bg-argile-400' : 'bg-soleil-400'} shrink-0"></span>
+                {meteo.label}
+              </span>
+            {/if}
+          </div>
+        {/if}
+
+        <!-- Menu du jour -->
+        {#if data.todayMenus.length > 0}
+          <div class="mt-4 glass-2 rounded-2xl p-3.5">
+            <div class="flex items-center gap-1.5 mb-2">
+              <UtensilsCrossed size={13} class="text-sienne-500" />
+              <span class="text-[11px] font-bold text-warm-600 uppercase tracking-wider">Menu du jour</span>
+            </div>
+            <div class="flex flex-wrap gap-x-5 gap-y-1.5">
+              {#each data.todayMenus as menu}
+                <div class="flex items-baseline gap-1.5">
+                  <span class="text-[11px] font-semibold text-sienne-500">{MENU_TYPE_LABELS[menu.mealType] ?? menu.mealType}</span>
+                  <span class="text-xs text-warm-700">{menu.description}</span>
+                </div>
+              {/each}
+            </div>
           </div>
         {/if}
       </div>
     </FadeIn>
 
-    <!-- BLOC 2 — Child hero cards with journal details -->
+    <!-- BLOC 2 + SIDEBAR — desktop side-by-side -->
+    <div class="bloc-middle">
+    <div class="bloc-main">
+
     {#if data.children.length > 0}
-      {#each data.children as child, i (child.id)}
-        <FadeIn delay={60 + i * 40}>
-          <a href="/app/children/{child.id}" class="block parent-hero">
-            <div class="glass-1 rounded-3xl overflow-hidden">
+      <FadeIn delay={40} class="flex-1 flex flex-col">
+        <div class="glass-1 rounded-3xl overflow-hidden relative">
 
-              <!-- Header: avatar centered + name + mood -->
-              <div class="p-5 sm:p-6">
-                <div class="flex items-center gap-4">
-                  <!-- Avatar with mood glow -->
-                  <div class="relative shrink-0">
-                    {#if child.hasLog && child.mood && child.mood in MOOD_CFG}
-                      {@const moodKey = child.mood as Mood}
-                      <div class="mood-glow {MOOD_CFG[moodKey].dot}"></div>
-                      {#if child.avatarUrl}
-                        <img src={child.avatarUrl} alt={child.firstName}
-                          class="relative w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover ring-[3px] {MOOD_CFG[moodKey].ring}"
-                          loading="lazy" decoding="async" />
-                      {:else}
-                        <div class="relative w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center font-bold text-base sm:text-lg ring-[3px] {MOOD_CFG[moodKey].ring}
-                          {avatarColor(child.firstName + child.lastName)}">
-                          {child.firstName[0]}{child.lastName[0]}
-                        </div>
-                      {/if}
-                    {:else}
-                      {#if child.avatarUrl}
-                        <img src={child.avatarUrl} alt={child.firstName}
-                          class="relative w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover ring-[3px] ring-warm-200"
-                          loading="lazy" decoding="async" />
-                      {:else}
-                        <div class="relative w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center font-bold text-base sm:text-lg ring-[3px] ring-warm-200
-                          {avatarColor(child.firstName + child.lastName)}">
-                          {child.firstName[0]}{child.lastName[0]}
-                        </div>
-                      {/if}
-                    {/if}
-                  </div>
+          <!-- Ambient météo tint -->
+          {#if totalLogged > 0 && bloc2Tab === 'enfants'}
+            <div class="absolute top-0 right-0 w-32 h-32 pointer-events-none transition-opacity duration-300"
+              style="background: radial-gradient(circle at 100% 0%, {meteo.color1}20, transparent 70%); filter: blur(8px);">
+            </div>
+          {/if}
 
-                  <div class="flex-1 min-w-0">
-                    <h2 class="text-lg sm:text-xl font-display font-bold text-warm-900 truncate leading-tight">
-                      {child.firstName}
-                    </h2>
-                    {#if child.hasLog && child.mood && child.mood in MOOD_CFG}
-                      {@const moodKey = child.mood as Mood}
-                      {@const MoodIcon = MOOD_CFG[moodKey].Icon}
-                      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold {MOOD_CFG[moodKey].bg} {MOOD_CFG[moodKey].text} mt-1.5">
-                        <MoodIcon size={12} />
-                        {MOOD_CFG[moodKey].label}
-                      </span>
-                    {:else}
-                      <p class="text-xs text-warm-400 mt-1">En attente du carnet</p>
-                    {/if}
-                  </div>
+          <!-- Tab header: Enfants / Calendrier -->
+          <div class="relative flex items-center justify-between px-5 py-3.5 border-b border-white/10">
+            <div class="flex items-center gap-1 bg-warm-200/30 rounded-xl p-0.5">
+              <button
+                type="button"
+                onclick={() => switchTab('enfants')}
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-[color,background-color,box-shadow] duration-200
+                  {bloc2Tab === 'enfants' ? 'bg-warm-50/70 text-warm-900 shadow-sm' : 'text-warm-500 hover:text-warm-700'}"
+              >
+                <Baby size={13} />
+                Mes enfants
+              </button>
+              <button
+                type="button"
+                onclick={() => switchTab('calendrier')}
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-[color,background-color,box-shadow] duration-200
+                  {bloc2Tab === 'calendrier' ? 'bg-warm-50/70 text-warm-900 shadow-sm' : 'text-warm-500 hover:text-warm-700'}"
+              >
+                <Calendar size={13} />
+                Calendrier
+              </button>
+            </div>
+            {#if bloc2Tab === 'enfants'}
+              <a href="/app/children" class="text-xs text-miel-500 hover:text-miel-700 flex items-center gap-0.5 transition-colors font-medium">
+                Tout voir <ChevronRight size={12} />
+              </a>
+            {/if}
+          </div>
 
-                  <ChevronRight size={18} class="text-warm-300 shrink-0" />
-                </div>
-              </div>
+          <!-- Tab content -->
+          <div class="bloc2-content bloc2-content-flow" bind:this={contentEl}>
+            <!-- Enfants tab -->
+            <div
+              class="bloc2-tab {bloc2Tab === 'enfants' ? 'bloc2-tab-active' : 'bloc2-tab-hidden'}"
+              bind:this={enfantsEl}
+            >
+              <div class="p-4 sm:p-5 space-y-4">
+                {#each data.children as child, i (child.id)}
+                  <a href="/app/children/{child.id}" class="block parent-hero">
+                    <div class="glass-2 rounded-2xl overflow-hidden child-card">
 
-              <!-- Journal details (only if log exists) -->
-              {#if child.hasLog}
-                <div class="border-t border-white/10 px-5 sm:px-6 py-4 space-y-3">
-
-                  <!-- Meals — horizontal row of plates -->
-                  {#if child.meals.length > 0}
-                    <div class="glass-2 rounded-2xl p-3.5">
-                      <div class="flex items-center gap-1.5 justify-center mb-2.5">
-                        <UtensilsCrossed size={13} class="text-sienne-500" />
-                        <span class="text-[11px] font-bold text-warm-600 uppercase tracking-wider">Repas</span>
-                      </div>
-                      <div class="flex items-start justify-center gap-4 flex-wrap">
-                        {#each child.meals as meal}
-                          <div class="flex flex-col items-center gap-1 min-w-15">
-                            <PlateVisual level={QUANTITY_TO_LEVEL[meal.quantity] ?? null} size="sm" />
-                            <p class="text-[10px] font-semibold text-warm-800 leading-tight text-center">{MEAL_LABELS[meal.type] ?? meal.type}</p>
-                            <p class="text-[9px] text-warm-500">{QUANTITY_LABELS[meal.quantity] ?? meal.quantity}</p>
+                      <!-- Header: avatar + name + mood -->
+                      <div class="p-4 sm:p-5">
+                        <div class="flex items-center gap-4">
+                          <div class="relative shrink-0">
+                            {#if child.hasLog && child.mood && child.mood in MOOD_CFG}
+                              {@const moodKey = child.mood as Mood}
+                              <div class="mood-glow {MOOD_CFG[moodKey].dot}"></div>
+                              {#if child.avatarUrl}
+                                <img src={child.avatarUrl} alt={child.firstName}
+                                  class="relative w-12 h-12 sm:w-14 sm:h-14 rounded-full object-cover ring-[3px] {MOOD_CFG[moodKey].ring}"
+                                  loading="lazy" decoding="async" />
+                              {:else}
+                                <div class="relative w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center font-bold text-sm sm:text-base ring-[3px] {MOOD_CFG[moodKey].ring}
+                                  {avatarColor(child.firstName + child.lastName)}">
+                                  {child.firstName[0]}{child.lastName[0]}
+                                </div>
+                              {/if}
+                            {:else}
+                              {#if child.avatarUrl}
+                                <img src={child.avatarUrl} alt={child.firstName}
+                                  class="relative w-12 h-12 sm:w-14 sm:h-14 rounded-full object-cover ring-[3px] ring-warm-200"
+                                  loading="lazy" decoding="async" />
+                              {:else}
+                                <div class="relative w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center font-bold text-sm sm:text-base ring-[3px] ring-warm-200
+                                  {avatarColor(child.firstName + child.lastName)}">
+                                  {child.firstName[0]}{child.lastName[0]}
+                                </div>
+                              {/if}
+                            {/if}
                           </div>
+
+                          <div class="flex-1 min-w-0">
+                            <h2 class="text-lg font-display font-bold text-warm-900 truncate leading-tight">
+                              {child.firstName}
+                            </h2>
+                            {#if child.hasLog && child.mood && child.mood in MOOD_CFG}
+                              {@const moodKey = child.mood as Mood}
+                              {@const MoodIcon = MOOD_CFG[moodKey].Icon}
+                              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold {MOOD_CFG[moodKey].bg} {MOOD_CFG[moodKey].text} mt-1">
+                                <MoodIcon size={12} />
+                                {MOOD_CFG[moodKey].label}
+                              </span>
+                            {:else}
+                              <p class="text-xs text-warm-400 mt-1">En attente du carnet</p>
+                            {/if}
+                          </div>
+
+                          <ChevronRight size={18} class="text-warm-300 shrink-0" />
+                        </div>
+                      </div>
+
+                      <!-- Journal details -->
+                      {#if child.hasLog}
+                        <div class="border-t border-white/8 px-4 sm:px-5 py-3.5 space-y-2.5">
+
+                          <!-- Meals row -->
+                          {#if child.meals.length > 0}
+                            <div class="flex items-start justify-center gap-4 flex-wrap">
+                              {#each child.meals as meal}
+                                <div class="flex flex-col items-center gap-1 min-w-15">
+                                  <PlateVisual level={QUANTITY_TO_LEVEL[meal.quantity] ?? null} size="sm" />
+                                  <p class="text-[10px] font-semibold text-warm-800 leading-tight text-center">{MEAL_LABELS[meal.type] ?? meal.type}</p>
+                                  <p class="text-[9px] text-warm-500">{QUANTITY_LABELS[meal.quantity] ?? meal.quantity}</p>
+                                </div>
+                              {/each}
+                            </div>
+                          {/if}
+
+                          <!-- Nap + Changes + Health row -->
+                          <div class="grid grid-cols-3 gap-2">
+                            <div class="rounded-xl bg-white/30 p-2.5 text-center">
+                              <div class="flex items-center gap-1 justify-center mb-1">
+                                <Moon size={11} class="text-bleu-400" />
+                                <span class="text-[9px] font-bold text-warm-500 uppercase tracking-wider">Sieste</span>
+                              </div>
+                              {#if child.nap}
+                                <p class="text-xs font-bold text-warm-900 leading-tight">{formatNapDuration(child.nap)}</p>
+                                <p class="text-[9px] text-bleu-400 font-medium mt-0.5">{NAP_QUALITY_LABELS[child.nap.quality] ?? child.nap.quality}</p>
+                              {:else}
+                                <p class="text-[10px] text-warm-400 italic">Pas de sieste</p>
+                              {/if}
+                            </div>
+
+                            <div class="rounded-xl bg-white/30 p-2.5 text-center">
+                              <div class="flex items-center gap-1 justify-center mb-1">
+                                <Droplets size={11} class="text-bleu-400" />
+                                <span class="text-[9px] font-bold text-warm-500 uppercase tracking-wider">Changes</span>
+                              </div>
+                              <p class="text-base font-bold text-warm-900 leading-tight">{child.changes}</p>
+                            </div>
+
+                            <div class="rounded-xl bg-white/30 p-2.5 text-center">
+                              {#if child.health && (child.health.temperature || child.health.symptoms || child.health.medication)}
+                                <div class="flex items-center gap-1 justify-center mb-1">
+                                  <Thermometer size={11} class="text-argile-400" />
+                                  <span class="text-[9px] font-bold text-warm-500 uppercase tracking-wider">Sante</span>
+                                </div>
+                                <div class="space-y-0.5">
+                                  {#if child.health.temperature}
+                                    <p class="text-xs font-bold text-warm-900">{child.health.temperature}°C</p>
+                                  {/if}
+                                  {#if child.health.symptoms}
+                                    <p class="text-[9px] text-warm-600 line-clamp-1">{child.health.symptoms}</p>
+                                  {/if}
+                                </div>
+                              {:else}
+                                <div class="flex items-center gap-1 justify-center mb-1">
+                                  <Heart size={11} class="text-mousse-400" />
+                                  <span class="text-[9px] font-bold text-warm-500 uppercase tracking-wider">Sante</span>
+                                </div>
+                                <p class="text-[10px] text-mousse-500 font-medium">Tout va bien</p>
+                              {/if}
+                            </div>
+                          </div>
+                        </div>
+
+                        <!-- Assistante note -->
+                        {#if child.notes}
+                          <div class="border-t border-white/8 px-4 sm:px-5 py-3">
+                            <div class="flex items-start gap-2.5">
+                              <div class="w-5 h-5 rounded-lg bg-miel-100/80 flex items-center justify-center shrink-0 mt-0.5">
+                                <Pencil size={10} class="text-miel-600" />
+                              </div>
+                              <div class="min-w-0 flex-1">
+                                <p class="text-[10px] font-bold text-miel-500 uppercase tracking-widest mb-0.5">Note de l'assistante</p>
+                                <p class="text-xs text-warm-800 leading-relaxed line-clamp-2">{child.notes}</p>
+                              </div>
+                            </div>
+                          </div>
+                        {/if}
+
+                      {:else}
+                        <!-- No journal yet -->
+                        <div class="border-t border-white/8 px-4 sm:px-5 py-5 text-center">
+                          <div class="flex justify-center mb-2">
+                            <div class="w-8 h-8 rounded-xl bg-warm-100/60 flex items-center justify-center">
+                              <BookOpen size={16} class="text-warm-400" />
+                            </div>
+                          </div>
+                          <p class="text-sm text-warm-600 font-medium">Pas encore de carnet aujourd'hui</p>
+                          <p class="text-[11px] text-warm-400 mt-0.5">L'assistante n'a pas encore saisi le carnet</p>
+                        </div>
+                      {/if}
+                    </div>
+                  </a>
+                {/each}
+              </div>
+            </div>
+
+            <!-- Calendrier tab -->
+            <div
+              class="bloc2-tab {bloc2Tab === 'calendrier' ? 'bloc2-tab-active' : 'bloc2-tab-hidden'}"
+              bind:this={calendarEl}
+            >
+              <div class="calendar-with-sidebar">
+                <div class="calendar-embed calendar-main">
+                  <CalendarMonth
+                    year={calYear}
+                    month={calMonth}
+                    events={calEvents}
+                    onEventClick={(e) => selectedEvent = e}
+                    onNavigate={navigateCalendar}
+                    onDaySelect={(d) => calSelectedDay = d}
+                    onDayHover={(d) => calHoveredDay = d}
+                  />
+                </div>
+                <div class="present-sidebar">
+                  <div class="present-sidebar-header">
+                    <Users size={12} class="text-miel-500" />
+                    <span class="text-[10px] font-bold text-warm-700 uppercase tracking-wider">Presents</span>
+                  </div>
+                  <p class="text-[10px] text-warm-500 mb-2 capitalize present-day-label">{calSelectedLabel}</p>
+                  {#key activeDay}
+                    {#if presentChildren.length > 0}
+                      <div class="present-list">
+                        {#each presentChildren as child, i}
+                          <a
+                            href="/app/children/{child.id}"
+                            class="present-child present-child-enter"
+                            style="--stagger: {i * 50}ms"
+                          >
+                            <Avatar name="{child.firstName} {child.lastName}" size="sm" src={child.avatarUrl} />
+                            <div class="min-w-0 flex-1">
+                              <p class="text-[11px] font-semibold text-warm-800 truncate">{child.firstName}</p>
+                              {#if child.start && child.end}
+                                <p class="text-[9px] text-warm-500">{child.start} - {child.end}</p>
+                              {/if}
+                            </div>
+                          </a>
                         {/each}
                       </div>
+                    {:else}
+                      <p class="text-[10px] text-warm-500 italic present-empty-enter">Aucun enfant present</p>
+                    {/if}
+                    <div class="mt-auto pt-2 border-t border-white/15 present-count-enter">
+                      <p class="text-[10px] text-warm-500">
+                        <span class="font-bold text-warm-700">{presentChildren.length}</span> / {data.children.length} enfant{data.children.length > 1 ? 's' : ''}
+                      </p>
                     </div>
-                  {/if}
-
-                  <!-- Nap + Changes + Health — compact row -->
-                  <div class="grid grid-cols-3 gap-2.5">
-                    <div class="glass-2 rounded-2xl p-3 text-center">
-                      <div class="flex items-center gap-1 justify-center mb-1.5">
-                        <Moon size={12} class="text-bleu-400" />
-                        <span class="text-[10px] font-bold text-warm-600 uppercase tracking-wider">Sieste</span>
-                      </div>
-                      {#if child.nap}
-                        <p class="text-sm font-bold text-warm-900 leading-tight">{formatNapDuration(child.nap)}</p>
-                        <p class="text-[10px] text-bleu-400 font-medium mt-0.5">{NAP_QUALITY_LABELS[child.nap.quality] ?? child.nap.quality}</p>
-                      {:else}
-                        <p class="text-[11px] text-warm-400 italic">Pas de sieste</p>
-                      {/if}
-                    </div>
-
-                    <div class="glass-2 rounded-2xl p-3 text-center">
-                      <div class="flex items-center gap-1 justify-center mb-1.5">
-                        <Droplets size={12} class="text-bleu-400" />
-                        <span class="text-[10px] font-bold text-warm-600 uppercase tracking-wider">Changes</span>
-                      </div>
-                      <p class="text-lg font-bold text-warm-900 leading-tight">{child.changes}</p>
-                    </div>
-
-                    <div class="glass-2 rounded-2xl p-3 text-center">
-                      {#if child.health && (child.health.temperature || child.health.symptoms || child.health.medication)}
-                        <div class="flex items-center gap-1 justify-center mb-1.5">
-                          <Thermometer size={12} class="text-argile-400" />
-                          <span class="text-[10px] font-bold text-warm-600 uppercase tracking-wider">Sante</span>
-                        </div>
-                        <div class="space-y-0.5">
-                          {#if child.health.temperature}
-                            <p class="text-sm font-bold text-warm-900">{child.health.temperature}°C</p>
-                          {/if}
-                          {#if child.health.symptoms}
-                            <p class="text-[9px] text-warm-600 line-clamp-1">{child.health.symptoms}</p>
-                          {/if}
-                        </div>
-                      {:else}
-                        <div class="flex items-center gap-1 justify-center mb-1.5">
-                          <Heart size={12} class="text-mousse-400" />
-                          <span class="text-[10px] font-bold text-warm-600 uppercase tracking-wider">Sante</span>
-                        </div>
-                        <p class="text-[11px] text-mousse-500 font-medium">Tout va bien</p>
-                      {/if}
-                    </div>
-                  </div>
+                  {/key}
                 </div>
-
-                <!-- Notes from assistante -->
-                {#if child.notes}
-                  <div class="border-t border-white/10 px-5 sm:px-6 py-3.5">
-                    <div class="flex items-start gap-3">
-                      <div class="w-6 h-6 rounded-xl bg-miel-100/80 flex items-center justify-center shrink-0 mt-0.5">
-                        <Pencil size={11} class="text-miel-600" />
-                      </div>
-                      <div class="min-w-0 flex-1">
-                        <p class="text-[10px] font-bold text-miel-500 uppercase tracking-widest mb-0.5">Note de l'assistante</p>
-                        <p class="text-[13px] text-warm-800 leading-relaxed line-clamp-2">{child.notes}</p>
-                      </div>
-                    </div>
-                  </div>
-                {/if}
-
-              {:else}
-                <!-- No journal yet -->
-                <div class="border-t border-white/10 px-5 sm:px-6 py-6 text-center">
-                  <div class="flex justify-center mb-3">
-                    <div class="w-10 h-10 rounded-2xl bg-warm-100/60 flex items-center justify-center">
-                      <BookOpen size={20} class="text-warm-400" />
-                    </div>
-                  </div>
-                  <p class="text-sm text-warm-600 font-medium">Pas encore de carnet aujourd'hui</p>
-                  <p class="text-[11px] text-warm-400 mt-1">L'assistante n'a pas encore saisi le carnet</p>
-                </div>
-              {/if}
-
+              </div>
             </div>
-          </a>
-        </FadeIn>
-      {/each}
+          </div>
+        </div>
+      </FadeIn>
     {:else}
       <!-- Empty state: no children -->
-      <FadeIn delay={60}>
+      <FadeIn delay={40}>
         <div class="glass-1 rounded-3xl p-8 sm:p-10 text-center">
           <div class="flex justify-center mb-4">
             <div class="w-16 h-16 rounded-2xl bg-miel-100 flex items-center justify-center">
@@ -828,81 +1138,49 @@
       </FadeIn>
     {/if}
 
-    <!-- BLOC 3 — Recent news from assistante -->
-    {#if data.recentNews.length > 0}
-      <FadeIn delay={120}>
-        <div class="glass-1 rounded-3xl overflow-hidden">
-          <div class="flex items-center justify-between px-5 py-3.5 border-b border-white/10">
-            <h2 class="font-display font-bold text-warm-900 text-sm">News recentes</h2>
-            <a href="/app/feed" class="text-xs text-miel-500 hover:text-miel-700 flex items-center gap-0.5 transition-colors font-medium">
-              Tout voir <ChevronRight size={12} />
-            </a>
-          </div>
-          <div class="divide-y divide-white/10">
-            {#each data.recentNews.slice(0, 4) as news (news.id)}
-              <a href="/app/feed" class="flex items-start gap-3 px-5 py-3.5 hover:bg-warm-100/10 transition-colors group">
-                <div class="w-8 h-8 rounded-xl bg-soleil-400/15 flex items-center justify-center shrink-0 mt-0.5">
-                  <span class="text-sm">{news.emoji ?? '📰'}</span>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center gap-2 mb-0.5">
-                    <span class="text-xs font-semibold text-miel-600">{news.childName}</span>
-                    <span class="text-[10px] text-warm-400">{timeAgo(news.createdAt)}</span>
-                  </div>
-                  <p class="text-sm text-warm-700 leading-snug line-clamp-2 group-hover:text-warm-900 transition-colors">{news.content}</p>
-                </div>
+    </div>
+
+    <!-- Sidebar: News + Quick actions -->
+    <div class="bloc-sidebar">
+      <!-- News -->
+      <FadeIn delay={80} class="flex-1 flex flex-col min-h-0">
+        <div class="glass-1 rounded-3xl overflow-hidden flex flex-col flex-1 min-h-0">
+          <div class="flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0">
+            <h2 class="font-display font-bold text-warm-900 text-sm">News</h2>
+            {#if data.recentNews.length > 0}
+              <a href="/app/feed" class="text-xs text-miel-500 hover:text-miel-700 flex items-center gap-0.5 transition-colors font-medium">
+                Tout <ChevronRight size={12} />
               </a>
-            {/each}
+            {/if}
           </div>
+          {#if data.recentNews.length > 0}
+            <div class="flex-1 overflow-y-auto flex flex-col divide-y divide-white/10 news-scroll min-h-0">
+              {#each data.recentNews as news (news.id)}
+                <a href="/app/feed" class="flex flex-col gap-1 px-4 py-3 hover:bg-warm-100/10 transition-colors group">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm shrink-0">{news.emoji ?? '📸'}</span>
+                    <span class="text-xs font-semibold text-miel-600 truncate">{news.childName}</span>
+                    <span class="text-[10px] text-warm-400 shrink-0 ml-auto">{timeAgo(news.createdAt)}</span>
+                  </div>
+                  <p class="text-xs text-warm-700 leading-snug line-clamp-3 group-hover:text-warm-900 transition-colors">
+                    {news.content}
+                  </p>
+                </a>
+              {/each}
+            </div>
+          {:else}
+            <div class="flex-1 flex flex-col items-center justify-center px-4 py-6 text-center">
+              <Newspaper size={28} class="text-warm-300 mb-2" />
+              <p class="text-xs text-warm-500 leading-relaxed">
+                Les news apparaitront ici
+              </p>
+            </div>
+          {/if}
         </div>
       </FadeIn>
-    {/if}
 
-    <!-- BLOC 4 — Quick actions -->
-    <FadeIn delay={160}>
-      <div class="glass-1 rounded-3xl overflow-hidden divide-y divide-white/10">
-        <a href="/app/notes"
-          class="action-row flex items-center gap-4 px-5 py-3.5 hover:bg-warm-100/10
-            {data.pendingCount > 0 ? 'border-l-[3px] border-l-sienne-500' : ''}">
-          <div class="w-9 h-9 rounded-xl bg-miel-100 flex items-center justify-center shrink-0">
-            <FileText size={18} class="text-miel-600" />
-          </div>
-          <div class="flex-1 min-w-0">
-            <p class="text-sm font-semibold text-warm-900">Notes a l'assistante</p>
-            <p class="text-xs text-warm-500 mt-0.5">
-              {data.pendingCount > 0
-                ? `${data.pendingCount} réponse${data.pendingCount > 1 ? 's' : ''} non lue${data.pendingCount > 1 ? 's' : ''}`
-                : 'Absence, retard, santé...'}
-            </p>
-          </div>
-          <ChevronRight size={16} class="text-warm-300 shrink-0" />
-        </a>
-
-        <a href="/app/feed"
-          class="action-row flex items-center gap-4 px-5 py-3.5 hover:bg-warm-100/10">
-          <div class="w-9 h-9 rounded-xl bg-soleil-100 flex items-center justify-center shrink-0">
-            <Newspaper size={18} class="text-soleil-500" />
-          </div>
-          <div class="flex-1 min-w-0">
-            <p class="text-sm font-semibold text-warm-900">News</p>
-            <p class="text-xs text-warm-500 mt-0.5">Photos et nouvelles</p>
-          </div>
-          <ChevronRight size={16} class="text-warm-300 shrink-0" />
-        </a>
-
-        <a href="/app/children"
-          class="action-row flex items-center gap-4 px-5 py-3.5 hover:bg-warm-100/10">
-          <div class="w-9 h-9 rounded-xl bg-mousse-400/15 flex items-center justify-center shrink-0">
-            <Baby size={18} class="text-mousse-500" />
-          </div>
-          <div class="flex-1 min-w-0">
-            <p class="text-sm font-semibold text-warm-900">Fiche enfant</p>
-            <p class="text-xs text-warm-500 mt-0.5">Informations et historique</p>
-          </div>
-          <ChevronRight size={16} class="text-warm-300 shrink-0" />
-        </a>
-      </div>
-    </FadeIn>
+    </div>
+    </div>
 
   </div>
 
@@ -1156,14 +1434,53 @@
               class="bloc2-tab {bloc2Tab === 'calendrier' ? 'bloc2-tab-active' : 'bloc2-tab-hidden'}"
               bind:this={calendarEl}
             >
-              <div class="calendar-embed h-full">
-                <CalendarMonth
-                  year={calYear}
-                  month={calMonth}
-                  events={calEvents}
-                  onEventClick={(e) => selectedEvent = e}
-                  onNavigate={navigateCalendar}
-                />
+              <div class="calendar-with-sidebar">
+                <div class="calendar-embed calendar-main">
+                  <CalendarMonth
+                    year={calYear}
+                    month={calMonth}
+                    events={calEvents}
+                    onEventClick={(e) => selectedEvent = e}
+                    onNavigate={navigateCalendar}
+                    onDaySelect={(d) => calSelectedDay = d}
+                    onDayHover={(d) => calHoveredDay = d}
+                  />
+                </div>
+                <div class="present-sidebar">
+                  <div class="present-sidebar-header">
+                    <Users size={12} class="text-miel-500" />
+                    <span class="text-[10px] font-bold text-warm-700 uppercase tracking-wider">Presents</span>
+                  </div>
+                  <p class="text-[10px] text-warm-500 mb-2 capitalize present-day-label">{calSelectedLabel}</p>
+                  {#key activeDay}
+                    {#if presentChildren.length > 0}
+                      <div class="present-list">
+                        {#each presentChildren as child, i}
+                          <a
+                            href="/app/children/{child.id}"
+                            class="present-child present-child-enter"
+                            style="--stagger: {i * 50}ms"
+                          >
+                            <Avatar name="{child.firstName} {child.lastName}" size="sm" src={child.avatarUrl} />
+                            <div class="min-w-0 flex-1">
+                              <p class="text-[11px] font-semibold text-warm-800 truncate">{child.firstName}</p>
+                              {#if child.start && child.end}
+                                <p class="text-[9px] text-warm-500">{child.start} - {child.end}</p>
+                              {/if}
+                            </div>
+                          </a>
+                        {/each}
+                      </div>
+                    {:else}
+                      <p class="text-[10px] text-warm-500 italic present-empty-enter">Aucun enfant present</p>
+                    {/if}
+                    <div class="mt-auto pt-2 border-t border-white/15 present-count-enter">
+                      <p class="text-[10px] text-warm-500">
+                        <span class="font-bold text-warm-700">{presentChildren.length}</span> / {data.children.length} enfant{data.children.length > 1 ? 's' : ''}
+                      </p>
+                    </div>
+                  {/key}
+                </div>
               </div>
             </div>
           </div>
@@ -1308,8 +1625,8 @@
 
       <!-- Footer -->
       <div class="px-5 pb-5">
-        <Button variant="secondary" href="/app/inbox" class="w-full">
-          Voir dans la boîte de réception
+        <Button variant="secondary" href={isAsmmat ? '/app/inbox' : '/app/notes'} class="w-full">
+          {isAsmmat ? 'Voir dans la boîte de réception' : 'Voir mes notes'}
         </Button>
       </div>
     </div>

@@ -164,7 +164,7 @@
 >
   {#snippet actions()}
     {#if isAsmmat && data.children.length > 0}
-      <Button variant="primary" onclick={() => showNewNewsForm = true}>
+      <Button variant="primary" href="/app/feed/new">
         + Nouvelle news
       </Button>
     {/if}
@@ -354,7 +354,7 @@
           {/if}
         </p>
         {#if isAsmmat}
-          <Button variant="primary" onclick={() => showNewNewsForm = true}>
+          <Button variant="primary" href="/app/feed/new">
             Publier une news
           </Button>
         {/if}
@@ -488,7 +488,7 @@
                 </div>
 
                 <!-- Contenu -->
-                <p class="text-warm-800 whitespace-pre-wrap break-words">
+                <p class="text-warm-800 whitespace-pre-wrap wrap-break-word">
                   {#if news.emoji}
                     <span class="text-xl mr-2">{news.emoji}</span>
                   {/if}

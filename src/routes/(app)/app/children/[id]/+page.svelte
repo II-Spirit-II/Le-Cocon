@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageData, ActionData } from './$types';
-  import type { MealLevel, MealEntry, NapEntry, DailyLog } from '$lib/types';
+  import type { MealLevel, MealEntry, NapEntry, DailyLog, CareWeekday, CareDay, CareSchedule } from '$lib/types';
   import { enhance } from '$app/forms';
   import { fly } from 'svelte/transition';
   import { goto, invalidateAll } from '$app/navigation';
@@ -11,7 +11,7 @@
     Smile, Meh, Frown, Moon, UtensilsCrossed, CalendarDays,
     BookOpen, Newspaper, Trash2, Check, ChevronLeft,
     Thermometer, Heart, ChevronRight, Copy, Pencil, Droplets,
-    TrendingUp
+    TrendingUp, Clock
   } from 'lucide-svelte';
 
   interface Props {
@@ -404,6 +404,107 @@
       setTimeout(() => highlightedCode = null, 3000);
     }
   });
+
+  // ─── Care schedule editing ─────────────────────────────────────
+  const WEEKDAYS: { key: CareWeekday; label: string; short: string }[] = [
+    { key: 'lundi', label: 'Lundi', short: 'Lun' },
+    { key: 'mardi', label: 'Mardi', short: 'Mar' },
+    { key: 'mercredi', label: 'Mercredi', short: 'Mer' },
+    { key: 'jeudi', label: 'Jeudi', short: 'Jeu' },
+    { key: 'vendredi', label: 'Vendredi', short: 'Ven' },
+    { key: 'samedi', label: 'Samedi', short: 'Sam' },
+    { key: 'dimanche', label: 'Dimanche', short: 'Dim' },
+  ];
+
+  let scheduleEditing = $state(false);
+  let scheduleSaving = $state(false);
+  let scheduleSuccess = $state(false);
+  let scheduleError = $state('');
+
+  let editActiveDays = $state<Record<CareWeekday, boolean>>({
+    lundi: false, mardi: false, mercredi: false, jeudi: false,
+    vendredi: false, samedi: false, dimanche: false,
+  });
+
+  let editDayTimes = $state<Record<CareWeekday, CareDay>>({
+    lundi: { start: '08:00', end: '17:30' },
+    mardi: { start: '08:00', end: '17:30' },
+    mercredi: { start: '08:00', end: '17:30' },
+    jeudi: { start: '08:00', end: '17:30' },
+    vendredi: { start: '08:00', end: '17:30' },
+    samedi: { start: '08:00', end: '17:30' },
+    dimanche: { start: '08:00', end: '17:30' },
+  });
+
+  function initScheduleEdit() {
+    const schedule = data.child.careSchedule ?? {};
+    for (const day of WEEKDAYS) {
+      const entry = schedule[day.key];
+      editActiveDays[day.key] = !!entry;
+      if (entry) {
+        editDayTimes[day.key] = { ...entry };
+      } else {
+        editDayTimes[day.key] = { start: '08:00', end: '17:30' };
+      }
+    }
+    scheduleError = '';
+    scheduleEditing = true;
+  }
+
+  function cancelScheduleEdit() {
+    scheduleEditing = false;
+    scheduleError = '';
+  }
+
+  async function saveSchedule() {
+    const schedule: Record<string, CareDay> = {};
+    for (const day of WEEKDAYS) {
+      if (editActiveDays[day.key]) {
+        const { start, end } = editDayTimes[day.key];
+        if (end <= start) {
+          scheduleError = `${day.label} : l'heure de fin doit etre apres le debut`;
+          return;
+        }
+        schedule[day.key] = editDayTimes[day.key];
+      }
+    }
+
+    scheduleSaving = true;
+    scheduleError = '';
+
+    try {
+      const res = await fetch(`/app/children/${data.child.id}?/updateSchedule`, {
+        method: 'POST',
+        body: new URLSearchParams({ careSchedule: JSON.stringify(schedule) }),
+      });
+      if (res.ok) {
+        scheduleEditing = false;
+        scheduleSuccess = true;
+        setTimeout(() => scheduleSuccess = false, 2000);
+        invalidateAll();
+      } else {
+        scheduleError = 'Erreur lors de la sauvegarde';
+      }
+    } catch {
+      scheduleError = 'Erreur de connexion';
+    } finally {
+      scheduleSaving = false;
+    }
+  }
+
+  const currentScheduleDays = $derived.by(() => {
+    const schedule = data.child.careSchedule ?? {};
+    return WEEKDAYS.filter(d => schedule[d.key]);
+  });
+
+  function applyEditToAll(sourceKey: CareWeekday) {
+    const source = editDayTimes[sourceKey];
+    for (const day of WEEKDAYS) {
+      if (editActiveDays[day.key] && day.key !== sourceKey) {
+        editDayTimes[day.key] = { ...source };
+      }
+    }
+  }
 </script>
 
 <style>
@@ -456,6 +557,51 @@
     .graph-carousel { transition: none !important; }
   }
 
+  /* Schedule edit controls */
+  .schedule-day-toggle {
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+    outline: none;
+  }
+  .schedule-day-toggle:focus-visible {
+    box-shadow: 0 0 0 2px rgba(232, 145, 58, 0.4);
+  }
+  .schedule-day-active {
+    background: var(--color-miel-100);
+    color: var(--color-miel-700);
+    border-color: rgba(232, 145, 58, 0.25);
+  }
+  .schedule-day-inactive {
+    background: rgba(255, 255, 255, 0.25);
+    color: var(--color-warm-500);
+  }
+  .schedule-day-inactive:hover {
+    background: rgba(255, 248, 240, 0.5);
+    color: var(--color-warm-700);
+  }
+  .schedule-time-input {
+    display: block;
+    width: 100%;
+    max-width: 5.5rem;
+    border-radius: 0.375rem;
+    padding: 0.25rem 0.375rem;
+    font-size: 0.75rem;
+    color: var(--color-warm-900);
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    outline: none;
+    transition: border-color 0.2s ease;
+  }
+  .schedule-time-input:focus {
+    border-color: rgba(232, 145, 58, 0.5);
+    box-shadow: 0 0 0 2px rgba(232, 145, 58, 0.1);
+  }
+
   /* Codes card: fixed cell height, internal scroll */
   .bento :global(.bento-codes) {
     height: 200px;
@@ -497,8 +643,8 @@
   .bento :global(.bento-journal) { order: 1; }
   .bento :global(.bento-trends) { order: 2; }
   .bento :global(.bento-news) { order: 3; }
-  .bento :global(.bento-codes) { order: 4; }
-  .bento :global(.bento-presence) { order: 5; }
+  .bento :global(.bento-schedule) { order: 4; }
+  .bento :global(.bento-codes) { order: 5; }
 
   /* Tablet: 2-column grid */
   @media (min-width: 768px) {
@@ -509,22 +655,22 @@
         "hero     hero"
         "journal  journal"
         "trends   trends"
-        "news     codes"
-        "presence .";
+        "schedule news"
+        "codes    .";
     }
     .bento-parent {
       grid-template-areas:
         "hero     hero"
         "journal  journal"
         "trends   trends"
-        "news     presence";
+        "schedule news";
     }
     .bento :global(.bento-hero) { grid-area: hero; }
     .bento :global(.bento-journal) { grid-area: journal; }
     .bento :global(.bento-trends) { grid-area: trends; }
     .bento :global(.bento-news) { grid-area: news; }
+    .bento :global(.bento-schedule) { grid-area: schedule; }
     .bento :global(.bento-codes) { grid-area: codes; }
-    .bento :global(.bento-presence) { grid-area: presence; }
   }
 
   /* Desktop: 2-column with journal spanning 2 rows, grid constrains heights */
@@ -535,14 +681,14 @@
         "hero     hero"
         "journal  trends"
         "journal  news"
-        "codes    presence";
+        "schedule codes";
     }
     .bento-parent {
       grid-template-areas:
         "hero     hero"
         "journal  trends"
         "journal  news"
-        "journal  presence";
+        "journal  schedule";
     }
     .bento :global(.bento-journal) { min-height: 0; }
     .bento :global(.bento-trends) { min-height: 0; }
@@ -1048,30 +1194,120 @@
     </FadeIn>
   {/if}
 
-  <!-- ══════ PRESENCE ══════ -->
-  <FadeIn delay={160} class="bento-presence h-full">
+  <!-- ══════ SCHEDULE ══════ -->
+  <FadeIn delay={150} class="bento-schedule h-full">
     <Card padding="md" class="h-full">
-          <h3 class="font-display font-bold text-base text-warm-900 mb-3">Presence</h3>
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <span class="text-xs text-warm-600">Absences a venir (7j)</span>
-              <span class="text-xs font-bold text-warm-900">{data.insights.absencesNext7Days}</span>
-            </div>
-            <div class="flex items-center justify-between">
-              <span class="text-xs text-warm-600">Absences a venir (30j)</span>
-              <span class="text-xs font-bold text-warm-900">{data.insights.absencesNext30Days}</span>
-            </div>
-            <div class="flex items-center justify-between">
-              <span class="text-xs text-warm-600">Jours d'absence (30j)</span>
-              <span class="text-xs font-bold text-warm-900">{data.insights.absenceDaysLast30}</span>
-            </div>
-            <div class="flex items-center justify-between">
-              <span class="text-xs text-warm-600">Retards (30j)</span>
-              <span class="text-xs font-bold text-warm-900">{data.insights.retardsLast30Days}</span>
-            </div>
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <Clock size={14} class="text-miel-500" />
+          <h3 class="font-display font-bold text-base text-warm-900">Horaires de garde</h3>
+        </div>
+        {#if isAsmmat && !scheduleEditing}
+          <button
+            type="button"
+            onclick={initScheduleEdit}
+            class="text-xs text-miel-500 hover:text-miel-700 font-medium transition-colors flex items-center gap-1"
+          >
+            <Pencil size={11} />
+            Modifier
+          </button>
+        {/if}
+      </div>
+
+      {#if scheduleEditing}
+        <!-- Edit mode -->
+        <div class="space-y-2">
+          <div class="flex flex-wrap gap-1.5 mb-3">
+            {#each WEEKDAYS as day}
+              <button
+                type="button"
+                onclick={() => { editActiveDays[day.key] = !editActiveDays[day.key]; scheduleError = ''; }}
+                class="schedule-day-toggle {editActiveDays[day.key] ? 'schedule-day-active' : 'schedule-day-inactive'}"
+              >
+                {day.short}
+              </button>
+            {/each}
           </div>
+
+          {#each WEEKDAYS as day, i}
+            {#if editActiveDays[day.key]}
+              <div class="flex items-center gap-2 px-2 py-1.5 glass-2 rounded-lg">
+                <span class="text-[10px] font-bold text-warm-600 w-7 shrink-0">{day.short}</span>
+                <input type="time" bind:value={editDayTimes[day.key].start} class="schedule-time-input" />
+                <span class="text-warm-400 text-[10px]">a</span>
+                <input type="time" bind:value={editDayTimes[day.key].end} class="schedule-time-input" />
+                {#if i === 0}
+                  <button
+                    type="button"
+                    onclick={() => applyEditToAll(day.key)}
+                    class="text-[9px] text-miel-500 hover:text-miel-700 font-semibold transition-colors whitespace-nowrap"
+                  >
+                    Tous
+                  </button>
+                {/if}
+              </div>
+            {/if}
+          {/each}
+
+          {#if scheduleError}
+            <p class="text-xs text-argile-500">{scheduleError}</p>
+          {/if}
+
+          <div class="flex gap-2 pt-2">
+            <button
+              type="button"
+              onclick={saveSchedule}
+              disabled={scheduleSaving}
+              class="flex-1 text-xs font-semibold py-1.5 rounded-lg bg-miel-100 text-miel-700 hover:bg-miel-200 transition-colors disabled:opacity-50"
+            >
+              {scheduleSaving ? 'Enregistrement...' : 'Enregistrer'}
+            </button>
+            <button
+              type="button"
+              onclick={cancelScheduleEdit}
+              class="text-xs font-medium py-1.5 px-3 rounded-lg text-warm-500 hover:text-warm-700 transition-colors"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      {:else}
+        <!-- Display mode -->
+        {#if currentScheduleDays.length > 0}
+          <div class="space-y-1.5">
+            {#each currentScheduleDays as day}
+              {@const entry = data.child.careSchedule[day.key]}
+              {#if entry}
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-medium text-warm-700">{day.label}</span>
+                  <span class="text-xs text-warm-500">{entry.start} - {entry.end}</span>
+                </div>
+              {/if}
+            {/each}
+          </div>
+        {:else}
+          <p class="text-xs text-warm-500 italic">Aucun horaire defini</p>
+          {#if isAsmmat}
+            <button
+              type="button"
+              onclick={initScheduleEdit}
+              class="mt-2 text-xs text-miel-500 hover:text-miel-700 font-medium transition-colors"
+            >
+              Definir les horaires
+            </button>
+          {/if}
+        {/if}
+
+        {#if scheduleSuccess}
+          <div class="mt-2 flex items-center gap-1 text-mousse-600">
+            <Check size={12} />
+            <span class="text-xs font-medium">Horaires mis a jour</span>
+          </div>
+        {/if}
+      {/if}
     </Card>
   </FadeIn>
+
 
 </div>
 {/key}

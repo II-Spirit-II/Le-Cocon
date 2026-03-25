@@ -1,11 +1,22 @@
 export * from './auth';
 
+export type CareWeekday = 'lundi' | 'mardi' | 'mercredi' | 'jeudi' | 'vendredi' | 'samedi' | 'dimanche';
+
+export interface CareDay {
+  start: string; // HH:MM
+  end: string;   // HH:MM
+}
+
+/** Map of weekday → time slot. Only present days are care days. */
+export type CareSchedule = Partial<Record<CareWeekday, CareDay>>;
+
 export interface Child {
   id: string;
   firstName: string;
   lastName: string;
   birthDate: string;
   avatarPath?: string;
+  careSchedule: CareSchedule;
   parentIds: string[];
   assistanteId: string;
   createdAt: string;

@@ -27,10 +27,28 @@ export const signupSchema = z.object({
 
 // -- Children --
 
+const timeString = z.string().regex(/^\d{2}:\d{2}$/, 'Format attendu : HH:MM');
+
+const careDaySchema = z.object({
+  start: timeString,
+  end: timeString,
+}).refine(d => d.end > d.start, { message: "L'heure de fin doit être après l'heure de début" });
+
+export const careScheduleSchema = z.object({
+  lundi: careDaySchema.optional(),
+  mardi: careDaySchema.optional(),
+  mercredi: careDaySchema.optional(),
+  jeudi: careDaySchema.optional(),
+  vendredi: careDaySchema.optional(),
+  samedi: careDaySchema.optional(),
+  dimanche: careDaySchema.optional(),
+}).optional().default({});
+
 export const createChildSchema = z.object({
   firstName: trimmedString.min(1, 'Prénom requis').max(100),
   lastName: trimmedString.min(1, 'Nom requis').max(100),
   birthDate: dateString,
+  careSchedule: careScheduleSchema,
 });
 
 // -- News --

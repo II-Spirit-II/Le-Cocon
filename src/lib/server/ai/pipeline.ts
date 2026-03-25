@@ -1,7 +1,7 @@
 import type { DrizzleDB } from '$lib/server/db';
 import { eq } from 'drizzle-orm';
 import { children } from '$lib/server/db/schema';
-import type { AIQueryInput, AIQueryResult, AIResponse } from './types';
+import type { AIQueryInput, AIQueryResult, AIResponse, AIIntent } from './types';
 import { detectIntent, intentLabels } from './intent';
 import { retrieveSources, verifyChildAccess } from './retrieval';
 import { SYSTEM_PROMPT, buildUserPrompt, parseAIResponse, generateNoSourcesResponse } from './prompt';
@@ -35,9 +35,23 @@ export async function executeAIPipeline(
     // fallback to generic name
   }
 
-  const intent = detectIntent(question);
+  // Use pre-classified queryType when available, fallback to regex detection
+  const queryTypeToIntent: Record<string, AIIntent> = {
+    meals_recent: 'meals_recent',
+    nap_recent: 'nap_recent',
+    health_last: 'health_last',
+    absences: 'absences',
+    recap_week: 'recap_week',
+    news_recent: 'news_recent',
+    general: 'fallback_unknown',
+  };
+
+  const intent: AIIntent = input.queryType
+    ? (queryTypeToIntent[input.queryType] ?? 'fallback_unknown')
+    : detectIntent(question);
+
   const isDev = process.env.NODE_ENV === 'development';
-  if (isDev) console.log(`[AI Pipeline] Intent: ${intent} (${intentLabels[intent]})`);
+  if (isDev) console.log(`[AI Pipeline] Intent: ${intent} (${intentLabels[intent]})${input.queryType ? ' [pre-classified]' : ' [regex]'}`);
 
   const sources = await retrieveSources(db, childId, intent, timeframeDays);
   if (isDev) console.log(`[AI Pipeline] Sources:`, {

@@ -189,20 +189,31 @@
   {/if}
 
   <!-- Filters -->
-  <div class="mb-6 flex flex-wrap items-center gap-4">
+  <div class="mb-6 flex flex-wrap items-center gap-3">
+    <div class="inbox-toggle">
+      <button
+        type="button"
+        onclick={() => showOnlyOpen = true}
+        class="inbox-toggle-btn {showOnlyOpen ? 'inbox-toggle-active' : ''}"
+      >
+        A traiter
+        {#if unacknowledgedCount > 0}
+          <span class="inbox-toggle-badge">{unacknowledgedCount}</span>
+        {/if}
+      </button>
+      <button
+        type="button"
+        onclick={() => showOnlyOpen = false}
+        class="inbox-toggle-btn {!showOnlyOpen ? 'inbox-toggle-active' : ''}"
+      >
+        Toutes
+      </button>
+    </div>
     <Select
       bind:value={selectedChildFilter}
       options={childOptions}
       class="max-w-xs"
     />
-    <label class="flex items-center gap-2 cursor-pointer">
-      <input
-        type="checkbox"
-        bind:checked={showOnlyOpen}
-        class="w-4 h-4 text-miel-600 border-warm-300 rounded focus-visible:ring-miel-500"
-      />
-      <span class="text-sm text-warm-800">Uniquement non traitées</span>
-    </label>
   </div>
 
   {#if form?.error}
@@ -279,7 +290,7 @@
                 </div>
               {/if}
 
-              <p class="text-warm-800 whitespace-pre-wrap break-words">
+              <p class="text-warm-800 whitespace-pre-wrap wrap-break-word">
                 {note.content}
               </p>
 
@@ -373,3 +384,55 @@
     </div>
   </div>
 {/if}
+
+<style>
+  .inbox-toggle {
+    display: inline-flex;
+    padding: 3px;
+    border-radius: 0.75rem;
+    background: rgba(255, 248, 238, 0.5);
+    border: 1px solid rgba(255, 240, 220, 0.5);
+  }
+  .inbox-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.875rem;
+    border-radius: 0.625rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-warm-500);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+    outline: none;
+    white-space: nowrap;
+  }
+  .inbox-toggle-btn:hover:not(.inbox-toggle-active) {
+    color: var(--color-warm-700);
+  }
+  .inbox-toggle-active {
+    background: white;
+    color: var(--color-warm-900);
+    box-shadow: 0 1px 4px rgba(194, 101, 58, 0.1);
+  }
+  .inbox-toggle-badge {
+    min-width: 1.125rem;
+    height: 1.125rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.625rem;
+    font-weight: 700;
+    line-height: 1;
+    border-radius: 9999px;
+    background: var(--color-sienne-500);
+    color: white;
+    padding: 0 0.25rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .inbox-toggle-btn { transition: none !important; }
+  }
+</style>

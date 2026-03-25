@@ -4,7 +4,7 @@
 import { eq, inArray } from 'drizzle-orm';
 import type { DrizzleDB } from '$lib/server/db';
 import { children, parentChildren } from '$lib/server/db/schema';
-import type { Child } from '$lib/types';
+import type { Child, CareSchedule } from '$lib/types';
 
 function toChild(
   record: typeof children.$inferSelect,
@@ -16,6 +16,7 @@ function toChild(
     lastName: record.lastName,
     birthDate: record.birthDate,
     avatarPath: record.avatar || undefined,
+    careSchedule: (record.careSchedule ?? {}) as CareSchedule,
     parentIds,
     assistanteId: record.assistanteId,
     createdAt: record.createdAt.toISOString()
@@ -105,7 +106,7 @@ export async function getChildrenForUser(
 
 export async function createChild(
   db: DrizzleDB,
-  data: { firstName: string; lastName: string; birthDate: string; avatarPath?: string },
+  data: { firstName: string; lastName: string; birthDate: string; careSchedule?: CareSchedule },
   assistanteId: string
 ): Promise<Child | null> {
   try {
@@ -113,11 +114,27 @@ export async function createChild(
       firstName: data.firstName,
       lastName: data.lastName,
       birthDate: data.birthDate,
+      careSchedule: data.careSchedule ?? {},
       assistanteId,
     }).returning();
     return toChild(record, []);
   } catch {
     return null;
+  }
+}
+
+export async function updateChild(
+  db: DrizzleDB,
+  childId: string,
+  data: { careSchedule: CareSchedule }
+): Promise<boolean> {
+  try {
+    await db.update(children)
+      .set({ careSchedule: data.careSchedule, updatedAt: new Date() })
+      .where(eq(children.id, childId));
+    return true;
+  } catch {
+    return false;
   }
 }
 

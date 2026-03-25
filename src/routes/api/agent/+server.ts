@@ -2,13 +2,14 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { executeAIPipeline } from '$lib/server/ai/pipeline';
 import {
-  classifyIntent,
+  classifyUnified,
   executeAction,
   createJournalFromFormData,
   extractMoodRuleBased,
   type JournalFormData,
   type NapQuality,
   type JournalMealEntry,
+  type ClassificationResult,
 } from '$lib/server/ai/actions';
 import { chatCompletion, isAIEnabled } from '$lib/server/ai/ollama';
 import { getMenusForDate } from '$lib/domain/menus';
@@ -116,6 +117,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
   const napDefaults = { start: user.defaultNapStart, end: user.defaultNapEnd };
 
+  // ── Direct form submissions (journal/news) — bypass classification ────
   if (journalData && role === 'assistante') {
     const result = await createJournalFromFormData(db, journalData, user.id, napDefaults);
     return json({ reply: result.message, action: result });
@@ -136,6 +138,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     return json({ reply: 'Impossible de publier la news. Vérifiez vos droits.' });
   }
 
+  // ── Load children list ────────────────────────────────────────────────
   const rawChildren = await getChildrenForUser(db, user.id, user.role as 'assistante' | 'parent');
   const childrenList = rawChildren.map(c => ({
     id: c.id,
@@ -143,16 +146,38 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     last_name: c.lastName,
   }));
 
-  let targetChildId: string | null = childIdFromPath(contextPath);
+  // ── Unified classification ────────────────────────────────────────────
+  const classification = await classifyUnified(message, conversationHistory, contextPath);
+  const isDev = process.env.NODE_ENV === 'development';
+  if (isDev) console.log('[Agent] Classification:', JSON.stringify(classification));
 
-  if (!targetChildId) {
-    const nMsg = normalize(message);
+  // ── Resolve target child ──────────────────────────────────────────────
+  // Priority: explicit name in message > LLM-extracted name > URL path
+  let targetChildId: string | null = null;
+
+  // 1. Child name explicitly mentioned in the message (highest priority)
+  const nMsg = normalize(message);
+  for (const c of childrenList) {
+    if (nMsg.includes(normalize(c.first_name))) {
+      targetChildId = c.id;
+      break;
+    }
+  }
+
+  // 2. Child name extracted by LLM classification
+  if (!targetChildId && classification.childName) {
+    const nClassified = normalize(classification.childName);
     for (const c of childrenList) {
-      if (nMsg.includes(normalize(c.first_name))) {
+      if (normalize(c.first_name) === nClassified || normalize(`${c.first_name} ${c.last_name}`).includes(nClassified)) {
         targetChildId = c.id;
         break;
       }
     }
+  }
+
+  // 3. Fallback: child ID from current page URL
+  if (!targetChildId) {
+    targetChildId = childIdFromPath(contextPath);
   }
 
   const targetChild = childrenList.find(c => c.id === targetChildId);
@@ -160,119 +185,89 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     ? `${targetChild.first_name} ${targetChild.last_name}`
     : '';
 
-  if (role === 'assistante') {
-    const actionType = await classifyIntent(message, contextPath);
+  const childOptions: ChildOption[] = childrenList.map(c => ({
+    id: c.id,
+    name: `${c.first_name} ${c.last_name}`,
+  }));
 
-    if (actionType) {
-      const childOptions: ChildOption[] = childrenList.map(c => ({
-        id: c.id,
-        name: `${c.first_name} ${c.last_name}`,
-      }));
-
-      if (actionType === 'create_journal') {
-        if (!targetChildId) {
-          return json({
-            reply: childrenList.length > 0
-              ? 'Pour quel enfant souhaitez-vous créer le carnet ?'
-              : "Je ne trouve aucun enfant associé à votre compte.",
-            followUp: childrenList.length > 0
-              ? { type: 'child_picker' as const, childOptions, pendingAction: 'create_journal' as const }
-              : undefined,
-          });
-        }
-
-        const now = new Date();
-        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        const menusForToday = await getMenusForDate(db, today);
-
-        if (menusForToday.length === 0) {
-          return json({
-            reply: `Aucun menu n'est configuré pour aujourd'hui. Renseignez d'abord les menus du jour (section "Menus") pour que je puisse créer un carnet complet avec les repas.`,
-          });
-        }
-
-        const detectedMood = extractMoodRuleBased(normalize(message));
-        return json({
-          reply: `Parfait ! Je vais créer le carnet de ${targetChildName}. Quelques questions rapides :`,
-          followUp: {
-            type: 'journal_form' as const,
-            childId: targetChildId,
-            childName: targetChildName,
-            menus: menusForToday
-              .sort((a, b) => {
-                const order = { 'petit-dejeuner': 0, 'dejeuner': 1, 'gouter': 2 } as Record<string, number>;
-                return (order[a.mealType] ?? 9) - (order[b.mealType] ?? 9);
-              })
-              .map(m => ({ mealType: m.mealType, description: m.description, id: m.id })),
-            partial: { mood: detectedMood ?? undefined },
-          },
-        });
-      }
-
-      if (actionType === 'create_news') {
-        if (!targetChildId) {
-          return json({
-            reply: childrenList.length > 0
-              ? 'Pour quel enfant souhaitez-vous publier une news ?'
-              : "Je ne trouve aucun enfant associé à votre compte.",
-            followUp: childrenList.length > 0
-              ? { type: 'child_picker' as const, childOptions, pendingAction: 'create_news' as const }
-              : undefined,
-          });
-        }
-
-        if (message.trim().length < 25) {
-          return json({
-            reply: `Que souhaitez-vous annoncer pour ${targetChildName} ?`,
-            followUp: {
-              type: 'news_content' as const,
-              childId: targetChildId,
-              childName: targetChildName,
-            },
-          });
-        }
-
-        const result = await executeAction(db, 'create_news', targetChildId, targetChildName, user.id, message, napDefaults);
-        return json({
-          reply: result.success ? result.message : `${result.message} Vous pouvez le faire manuellement.`,
-          action: result,
-        });
-      }
-    }
-  }
-
-  if (targetChildId) {
-    const result = await executeAIPipeline(db, {
-      childId: targetChildId,
-      question: message,
-    });
-
-    if (result.success && result.response) {
-      return json({ reply: stripMarkdown(result.response.answer) });
+  // ── Route based on classification ─────────────────────────────────────
+  // ACTION intent (assistante only)
+  if (classification.intent === 'action' && role === 'assistante' && classification.action) {
+    // Low confidence → ask for confirmation instead of acting
+    if (classification.confidence < 0.7) {
+      const actionLabel = classification.action === 'create_journal' ? 'créer le carnet' : 'publier une news';
+      const childSuffix = targetChildName ? ` pour ${targetChildName.split(' ')[0]}` : '';
+      return json({
+        reply: `Je crois comprendre que vous souhaitez ${actionLabel}${childSuffix}. C'est bien ça ?`,
+        followUp: {
+          type: 'confirm_action' as const,
+          action: classification.action,
+          childId: targetChildId,
+          childName: targetChildName || undefined,
+        },
+      });
     }
 
-    return json({ reply: result.error ?? "Je n'ai pas pu répondre à cette question." });
+    return handleAction(classification.action, targetChildId, targetChildName, childOptions, message, db, user.id, napDefaults);
   }
 
-  const nMsg = normalize(message);
-  const asksAllChildren =
-    nMsg.includes('tous les enfants') ||
-    nMsg.includes('toutes les enfants') ||
-    nMsg.includes('chaque enfant') ||
-    nMsg.includes('l ensemble des enfants');
+  // QUERY intent → pipeline RAG
+  if (classification.intent === 'query') {
+    if (targetChildId) {
+      const result = await executeAIPipeline(db, {
+        childId: targetChildId,
+        question: message,
+        queryType: classification.queryType,
+      });
 
-  if (asksAllChildren) {
+      if (result.success && result.response) {
+        return json({ reply: stripMarkdown(result.response.answer) });
+      }
+      return json({ reply: result.error ?? "Je n'ai pas pu répondre à cette question." });
+    }
+
+    // No child identified — ask which child
+    const nMsg = normalize(message);
+    const asksAllChildren =
+      nMsg.includes('tous les enfants') ||
+      nMsg.includes('toutes les enfants') ||
+      nMsg.includes('chaque enfant') ||
+      nMsg.includes('l ensemble des enfants');
+
+    if (asksAllChildren) {
+      const names = childrenList.map(c => c.first_name).join(', ');
+      return json({
+        reply: names.length > 0
+          ? `Je peux répondre à des questions enfant par enfant, mais pas analyser tout le groupe en une seule fois. Précisez un prénom parmi : ${names}.`
+          : "Je n'ai pas accès aux données globales du groupe. Précisez un enfant."
+      });
+    }
+
+    // Single child → auto-select
+    if (childrenList.length === 1) {
+      const onlyChild = childrenList[0];
+      const result = await executeAIPipeline(db, {
+        childId: onlyChild.id,
+        question: message,
+        queryType: classification.queryType,
+      });
+      if (result.success && result.response) {
+        return json({ reply: stripMarkdown(result.response.answer) });
+      }
+      return json({ reply: result.error ?? "Je n'ai pas pu répondre à cette question." });
+    }
+
+    // Multiple children, none identified → ask
     const names = childrenList.map(c => c.first_name).join(', ');
     return json({
-      reply: names.length > 0
-        ? `Je peux répondre à des questions enfant par enfant, mais pas analyser tout le groupe en une seule fois. Précisez un prénom parmi : ${names}.`
-        : "Je n'ai pas accès aux données globales du groupe. Précisez un enfant."
+      reply: `De quel enfant parlez-vous ? (${names})`,
     });
   }
 
+  // CHAT intent → conversational response
   const systemMsg = role === 'assistante'
-    ? `Tu es Assistant IA, assistant d'une assistante maternelle. ${SYSTEM_NO_MARKDOWN} Pour les données d'un enfant spécifique, demande de préciser son prénom.`
-    : `Tu es Assistant IA, assistant d'une application de suivi pour parents et assistantes maternelles. ${SYSTEM_NO_MARKDOWN}`;
+    ? `Tu es l'assistant IA de Le Cocon, une application de cahier de liaison pour assistantes maternelles. ${SYSTEM_NO_MARKDOWN} Tu peux aussi créer des carnets de journée et publier des news — propose-le si c'est pertinent. Pour les données d'un enfant spécifique, demande de préciser son prénom.`
+    : `Tu es l'assistant IA de Le Cocon, une application de suivi pour parents et assistantes maternelles. ${SYSTEM_NO_MARKDOWN}`;
 
   try {
     const raw = await chatCompletion(
@@ -289,3 +284,87 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     return json({ reply: "Je n'ai pas pu traiter votre message. Réessayez." });
   }
 };
+
+// ── Action handler (extracted from inline if/else) ──────────────────────
+async function handleAction(
+  actionType: 'create_journal' | 'create_news',
+  targetChildId: string | null,
+  targetChildName: string,
+  childOptions: ChildOption[],
+  message: string,
+  db: import('$lib/server/db').DrizzleDB,
+  userId: string,
+  napDefaults: { start?: string; end?: string },
+) {
+  if (actionType === 'create_journal') {
+    if (!targetChildId) {
+      return json({
+        reply: childOptions.length > 0
+          ? 'Pour quel enfant souhaitez-vous créer le carnet ?'
+          : "Je ne trouve aucun enfant associé à votre compte.",
+        followUp: childOptions.length > 0
+          ? { type: 'child_picker' as const, childOptions, pendingAction: 'create_journal' as const }
+          : undefined,
+      });
+    }
+
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const menusForToday = await getMenusForDate(db, today);
+
+    if (menusForToday.length === 0) {
+      return json({
+        reply: `Aucun menu n'est configuré pour aujourd'hui. Renseignez d'abord les menus du jour (section "Menus") pour que je puisse créer un carnet complet avec les repas.`,
+      });
+    }
+
+    const detectedMood = extractMoodRuleBased(normalize(message));
+    return json({
+      reply: `Parfait ! Je vais créer le carnet de ${targetChildName}. Quelques questions rapides :`,
+      followUp: {
+        type: 'journal_form' as const,
+        childId: targetChildId,
+        childName: targetChildName,
+        menus: menusForToday
+          .sort((a, b) => {
+            const order = { 'petit-dejeuner': 0, 'dejeuner': 1, 'gouter': 2 } as Record<string, number>;
+            return (order[a.mealType] ?? 9) - (order[b.mealType] ?? 9);
+          })
+          .map(m => ({ mealType: m.mealType, description: m.description, id: m.id })),
+        partial: { mood: detectedMood ?? undefined },
+      },
+    });
+  }
+
+  if (actionType === 'create_news') {
+    if (!targetChildId) {
+      return json({
+        reply: childOptions.length > 0
+          ? 'Pour quel enfant souhaitez-vous publier une news ?'
+          : "Je ne trouve aucun enfant associé à votre compte.",
+        followUp: childOptions.length > 0
+          ? { type: 'child_picker' as const, childOptions, pendingAction: 'create_news' as const }
+          : undefined,
+      });
+    }
+
+    if (message.trim().length < 25) {
+      return json({
+        reply: `Que souhaitez-vous annoncer pour ${targetChildName} ?`,
+        followUp: {
+          type: 'news_content' as const,
+          childId: targetChildId,
+          childName: targetChildName,
+        },
+      });
+    }
+
+    const result = await executeAction(db, 'create_news', targetChildId, targetChildName, userId, message, napDefaults);
+    return json({
+      reply: result.success ? result.message : `${result.message} Vous pouvez le faire manuellement.`,
+      action: result,
+    });
+  }
+
+  return json({ reply: "Action non reconnue." });
+}
