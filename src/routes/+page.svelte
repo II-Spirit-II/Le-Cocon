@@ -1,854 +1,1467 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { browser } from '$app/environment';
-  import { Button, PlateVisual } from '$lib/ui';
   import {
-    BookOpen, UtensilsCrossed, Moon, Smile, Newspaper, Calendar,
-    Sparkles, MessageSquare, Shield, Lock, Heart, ChevronDown,
-    Check, X, Clock, Baby, Users, ArrowRight, Star, Send, FileText
+    BookOpen, Camera, MessageSquare, UtensilsCrossed,
+    Sparkles, QrCode, ChevronDown, ArrowRight, Heart,
+    Clock, Shield, Users
   } from 'lucide-svelte';
 
-  // Scroll-based reveal
+  // ── Feature data ──────────────────────────────────────────────────────────
+
+  const features = [
+    {
+      num: '01',
+      icon: BookOpen,
+      title: 'Chaque repas, chaque sieste, transmis en temps reel',
+      body: "Plus besoin d'attendre le soir pour savoir comment s'est passee la journee. Repas, siestes, humeur, changes — tout arrive au fil de l'eau, dans un journal clair et chaleureux.",
+      cta: 'Decouvrir le journal',
+      mockup: 'journal' as const,
+    },
+    {
+      num: '02',
+      icon: Camera,
+      title: "Les premiers pas, partages a l'instant",
+      body: "Un sourire, une activite, un moment de fierte — l'assistante capture et partage. Les parents vivent les petites victoires meme a distance.",
+      cta: "Voir les actualites",
+      mockup: 'news' as const,
+    },
+    {
+      num: '03',
+      icon: MessageSquare,
+      title: "Absence, allergie, consigne : rien n'est oublie",
+      body: "Fini les mots griffonnes sur un coin de table. Les notes parents arrivent directement, avec accuse de reception et reponse de l'assistante.",
+      cta: 'Decouvrir les notes',
+      mockup: 'notes' as const,
+    },
+    {
+      num: '04',
+      icon: UtensilsCrossed,
+      title: 'Le menu de la semaine, accessible en un coup d\'oeil',
+      body: "Petit-dejeuner, dejeuner, gouter — les parents savent exactement ce que leur enfant mange. Transparent, simple, rassurant.",
+      cta: 'Voir les menus',
+      mockup: 'menus' as const,
+    },
+    {
+      num: '05',
+      icon: Sparkles,
+      title: "Un assistant intelligent qui vous fait gagner du temps",
+      body: "Saisie simplifiee, suggestions contextuelles, resume automatique — l'IA aide l'assistante a documenter la journee en quelques secondes, pas en quelques minutes.",
+      cta: "Essayer l'assistant",
+      mockup: 'ai' as const,
+    },
+    {
+      num: '06',
+      icon: QrCode,
+      title: 'Inviter un parent en 10 secondes',
+      body: "Un code, un lien, un QR — le parent scanne et rejoint l'espace de son enfant. Pas de formulaire complexe, pas d'attente.",
+      cta: "Voir comment ca marche",
+      mockup: 'invite' as const,
+    },
+  ];
+
+  const stats = [
+    { value: 30, suffix: 's', label: 'pour saisir un journal complet' },
+    { value: 100, suffix: '%', label: 'des parents informes en temps reel' },
+    { value: 0, suffix: '', label: 'carnet papier perdu', prefix: 'Zero' },
+    { value: 6, suffix: '', label: "fonctionnalites pensees pour le quotidien" },
+  ];
+
+  // ── Scroll observation ────────────────────────────────────────────────────
+
+  let heroReady = $state(false);
+  let observers: IntersectionObserver[] = [];
+  let visibleSections = $state<Set<string>>(new Set());
+  let counterTriggered = $state(false);
+  let counterValues = $state<number[]>([0, 0, 0, 0]);
+  let prefersReducedMotion = $state(false);
+  let focusedSections = $state<Set<string>>(new Set());
+
+  function animateCounter(target: number, index: number, duration: number) {
+    if (prefersReducedMotion) {
+      counterValues[index] = target;
+      return;
+    }
+    const start = performance.now();
+    function step(now: number) {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      // ease-out quad
+      const eased = 1 - (1 - progress) * (1 - progress);
+      counterValues[index] = Math.round(eased * target);
+      if (progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
   onMount(() => {
-    const observer = new IntersectionObserver(
+    prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // Hero entrance stagger
+    setTimeout(() => { heroReady = true; }, 100);
+
+    // Section reveal observer
+    const sectionObs = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting) entry.target.classList.add('is-visible');
+          if (entry.isIntersecting) {
+            const id = (entry.target as HTMLElement).dataset.section;
+            if (id) {
+              visibleSections = new Set([...visibleSections, id]);
+            }
+            sectionObs.unobserve(entry.target);
+          }
         });
       },
-      { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
+      { threshold: 0.15, rootMargin: '0px 0px -60px 0px' }
     );
-    document.querySelectorAll('.animate-on-scroll').forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
+    observers.push(sectionObs);
+
+    document.querySelectorAll('[data-section]').forEach((el) => {
+      sectionObs.observe(el);
+    });
+
+    // Focus observer — tracks which feature block the user is actively viewing
+    // Uses a high threshold so it only fires when the section is well in view
+    const focusObs = new IntersectionObserver(
+      (entries) => {
+        const next = new Set(focusedSections);
+        entries.forEach((entry) => {
+          const id = (entry.target as HTMLElement).dataset.section;
+          if (!id) return;
+          if (entry.isIntersecting) {
+            next.add(id);
+          } else {
+            next.delete(id);
+          }
+        });
+        focusedSections = next;
+      },
+      { threshold: 0.55 }
+    );
+    observers.push(focusObs);
+
+    document.querySelectorAll('.feature-block[data-section]').forEach((el) => {
+      focusObs.observe(el);
+    });
+
+    // Counter observer
+    const counterObs = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && !counterTriggered) {
+            counterTriggered = true;
+            stats.forEach((s, i) => {
+              setTimeout(() => animateCounter(s.value, i, 1200), i * 150);
+            });
+            counterObs.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.3 }
+    );
+    observers.push(counterObs);
+
+    const counterEl = document.getElementById('stats-section');
+    if (counterEl) counterObs.observe(counterEl);
+
+    return () => {
+      observers.forEach((obs) => obs.disconnect());
+    };
   });
 
-  // FAQ accordion
-  let openFaq = $state<number | null>(null);
-  function toggleFaq(i: number) {
-    openFaq = openFaq === i ? null : i;
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  function sectionVisible(id: string): boolean {
+    return visibleSections.has(id);
   }
 
-  const faqs = [
-    {
-      q: "C'est compliqué à utiliser ?",
-      a: "Non. Si vous savez envoyer un SMS, vous saurez utiliser Le Cocon. L'interface est pensée pour être simple : on clique, on remplit, c'est fait. Pas besoin de formation."
-    },
-    {
-      q: "Est-ce que les parents voient tout ce que je note ?",
-      a: "Oui, les parents voient le carnet de leur enfant dès que vous le validez. Ils reçoivent les repas, la sieste, l'humeur, les notes, tout ce que vous remplissez. Rien n'est caché."
-    },
-    {
-      q: "Combien ça coûte ?",
-      a: "Le Cocon est entièrement gratuit pendant la phase de lancement. Pas de carte bancaire demandée, pas d'engagement. On vous prévient avant tout changement."
-    },
-    {
-      q: "Mes données sont-elles en sécurité ?",
-      a: "Oui. Tout est hébergé en France chez Scaleway, chiffré en transit et au repos. Seuls vous et les parents liés à un enfant peuvent voir ses informations. Conforme RGPD."
-    }
-  ];
+  function sectionFocused(id: string): boolean {
+    return focusedSections.has(id);
+  }
 </script>
 
-<div class="min-h-screen bg-aube">
+<svelte:head>
+  <title>Le Cocon — Le cahier de liaison reinvente</title>
+  <meta name="description" content="Le Cocon remplace le carnet papier par un espace numerique chaleureux entre assistantes maternelles et parents. Journal, actualites, menus, notes — tout en temps reel." />
+</svelte:head>
 
-  <!-- ═══════════════════════════════════════
-       NAVIGATION
-       ═══════════════════════════════════════ -->
-  <nav class="fixed top-0 left-0 right-0 z-50 landing-nav">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex items-center justify-between h-16">
-        <div class="flex items-center gap-2.5">
-          <img src="/favicon.png" alt="Le Cocon" class="w-8 h-8" />
-          <span class="font-display font-bold text-xl text-warm-900">Le Cocon</span>
-        </div>
-        <div class="hidden md:flex items-center gap-8">
-          <a href="#fonctionnalites" class="text-sm font-medium text-warm-600 hover:text-warm-900 transition-colors">Fonctionnalités</a>
-          <a href="#comment-ca-marche" class="text-sm font-medium text-warm-600 hover:text-warm-900 transition-colors">Comment ça marche</a>
-          <a href="#temoignages" class="text-sm font-medium text-warm-600 hover:text-warm-900 transition-colors">Témoignages</a>
-          <a href="#tarifs" class="text-sm font-medium text-warm-600 hover:text-warm-900 transition-colors">Tarifs</a>
-        </div>
-        <div class="flex items-center gap-3">
-          <Button variant="ghost" href="/login">Connexion</Button>
-          <Button variant="primary" href="/onboarding">S'inscrire</Button>
-        </div>
-      </div>
+<!-- ════════════════════════════════════════════════════════════════════════
+     FLOATING NAV
+     ════════════════════════════════════════════════════════════════════════ -->
+
+<nav class="floating-nav" class:nav-visible={heroReady}>
+  <div class="floating-nav-inner">
+    <a href="/" class="font-display text-lg font-bold text-gradient shrink-0">Le Cocon</a>
+    <div class="nav-links">
+      <a href="#features" class="nav-link">Fonctionnalites</a>
+      <a href="#confiance" class="nav-link">Confiance</a>
+      <a href="#commencer" class="nav-link">Commencer</a>
     </div>
-  </nav>
+    <a href="/login" class="btn btn-primary text-sm px-5 py-2 rounded-xl shrink-0">
+      Connexion
+    </a>
+  </div>
+</nav>
 
+<!-- ════════════════════════════════════════════════════════════════════════
+     HERO — 100vh emotional opening
+     ════════════════════════════════════════════════════════════════════════ -->
 
-  <!-- ═══════════════════════════════════════
-       HERO
-       ═══════════════════════════════════════ -->
-  <section class="relative overflow-hidden pt-28 pb-20 sm:pt-32 sm:pb-28 px-4 sm:px-6 lg:px-8">
-    <!-- Decorative orbs -->
-    <div class="orb" style="width:380px;height:380px;background:rgba(232,145,58,0.08);top:-5%;right:8%;animation-delay:0s;"></div>
-    <div class="orb" style="width:300px;height:300px;background:rgba(194,101,58,0.06);bottom:5%;left:3%;animation-delay:-8s;"></div>
+<section class="hero-section relative min-h-dvh flex flex-col items-center justify-center overflow-hidden px-6">
+  <!-- Background orbs -->
+  <div class="orb orb-1" aria-hidden="true"></div>
+  <div class="orb orb-2" aria-hidden="true"></div>
+  <div class="orb orb-3" aria-hidden="true"></div>
 
-    <div class="max-w-6xl mx-auto">
-      <div class="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+  <!-- Golden threads SVG -->
+  <svg class="threads-svg" aria-hidden="true" viewBox="0 0 800 600" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path class="thread thread-1" d="M100,300 Q250,100 400,280 Q550,460 700,250" stroke="url(#threadGrad)" stroke-width="1.5" fill="none" />
+    <path class="thread thread-2" d="M150,450 Q300,200 450,350 Q600,500 750,300" stroke="url(#threadGrad2)" stroke-width="1" fill="none" />
+    <path class="thread thread-3" d="M50,200 Q200,400 400,320 Q600,240 780,400" stroke="url(#threadGrad)" stroke-width="0.8" fill="none" />
+    <defs>
+      <linearGradient id="threadGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#E8913A" stop-opacity="0" />
+        <stop offset="30%" stop-color="#E8913A" stop-opacity="0.3" />
+        <stop offset="70%" stop-color="#C2653A" stop-opacity="0.25" />
+        <stop offset="100%" stop-color="#C2653A" stop-opacity="0" />
+      </linearGradient>
+      <linearGradient id="threadGrad2" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#C2653A" stop-opacity="0" />
+        <stop offset="40%" stop-color="#E8913A" stop-opacity="0.2" />
+        <stop offset="60%" stop-color="#C2653A" stop-opacity="0.2" />
+        <stop offset="100%" stop-color="#E8913A" stop-opacity="0" />
+      </linearGradient>
+    </defs>
+  </svg>
 
-        <!-- Text -->
-        <div class="text-center lg:text-left">
-          <p class="text-sm font-semibold text-miel-600 uppercase tracking-wider mb-4">Pour les assistantes maternelles et les structures</p>
+  <!-- Hero content -->
+  <div class="relative z-10 max-w-3xl mx-auto text-center">
+    <!-- Eyebrow -->
+    <div
+      class="hero-eyebrow mb-6 inline-flex items-center gap-2 px-4 py-1.5 rounded-full"
+      class:hero-visible={heroReady}
+    >
+      <Heart class="w-3.5 h-3.5 text-sienne-500" />
+      <span class="text-sm font-medium text-warm-700">Cahier de liaison numerique</span>
+    </div>
 
-          <h1 class="font-display text-4xl sm:text-5xl lg:text-[3.4rem] font-bold text-warm-900 mb-6 leading-[1.15]">
-            Le Cahier de Liaison<br/>
-            <span class="text-gradient">Nouvelle Génération.</span>
-          </h1>
+    <!-- Headline -->
+    <h1
+      class="hero-headline font-display text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-nuit leading-[1.3] tracking-tight mb-6"
+      class:hero-visible={heroReady}
+    >
+      <span class="block">"Qu'est-ce qu'il a</span>
+      <span class="block text-gradient">mange aujourd'hui ?"</span>
+    </h1>
 
-          <p class="text-lg text-warm-700 max-w-xl mb-8 leading-relaxed">
-            Le Cocon remplace le carnet papier et les messages éparpillés.
-            Vous notez les repas, la sieste, l'humeur. Les parents consultent tout depuis leur téléphone.
+    <!-- Subheadline -->
+    <p
+      class="hero-sub text-lg sm:text-xl text-warm-700 max-w-xl mx-auto mb-10 leading-relaxed"
+      class:hero-visible={heroReady}
+    >
+      Le lien entre vous et l'assistante maternelle, tisse en temps reel.
+    </p>
+
+    <!-- CTAs -->
+    <div
+      class="hero-ctas flex flex-col sm:flex-row items-center justify-center gap-4"
+      class:hero-visible={heroReady}
+    >
+      <a href="/onboarding" class="btn btn-primary text-base px-8 py-3.5 rounded-2xl">
+        Commencer gratuitement
+        <ArrowRight class="w-4 h-4" />
+      </a>
+      <a href="#features" class="btn btn-ghost text-base px-6 py-3.5 rounded-2xl text-sienne-600">
+        Decouvrir les fonctionnalites
+      </a>
+    </div>
+  </div>
+
+  <!-- Scroll indicator -->
+  <div
+    class="hero-scroll absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2"
+    class:hero-visible={heroReady}
+  >
+    <span class="text-xs text-warm-500 tracking-widest uppercase">Decouvrir</span>
+    <div class="scroll-pill">
+      <div class="scroll-dot"></div>
+    </div>
+  </div>
+</section>
+
+<!-- Hero → page fade bridge -->
+<div class="hero-fade" aria-hidden="true"></div>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     INTRO — transition bridge
+     ════════════════════════════════════════════════════════════════════════ -->
+
+<section
+  class="py-20 sm:py-28 px-6"
+  data-section="intro"
+>
+  <div class="max-w-2xl mx-auto text-center">
+    <p
+      class="section-reveal font-display text-2xl sm:text-3xl md:text-4xl font-semibold text-warm-800 leading-snug"
+      class:is-visible={sectionVisible('intro')}
+    >
+      Le carnet papier se perd. Les SMS se noient. Les parents s'inquietent.
+      <span class="text-gradient font-bold">Le Cocon change tout.</span>
+    </p>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     FEATURES CASCADE — storyscrolling
+     ════════════════════════════════════════════════════════════════════════ -->
+
+<section id="features" class="relative pb-20 sm:pb-32">
+  <!-- Vertical golden thread -->
+  <div class="golden-thread" aria-hidden="true"></div>
+
+  {#each features as feature, i}
+    {@const isEven = i % 2 === 0}
+    {@const sectionId = `feature-${i}`}
+    <div
+      class="feature-block relative px-6 py-16 sm:py-24"
+      data-section={sectionId}
+    >
+      <div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+        <!-- Text side -->
+        <div
+          class="feature-text"
+          class:lg:order-2={!isEven}
+          class:is-visible={sectionVisible(sectionId)}
+          class:from-left={isEven}
+          class:from-right={!isEven}
+        >
+          <!-- Number -->
+          <span class="feature-num font-display italic text-6xl sm:text-7xl font-light text-miel-300/60 select-none leading-none">
+            {feature.num}
+          </span>
+          <!-- Icon + Title -->
+          <div class="mt-2 mb-4 flex items-start gap-3">
+            <div class="mt-1 shrink-0 w-10 h-10 rounded-xl bg-miel-100 flex items-center justify-center">
+              <feature.icon class="w-5 h-5 text-miel-600" />
+            </div>
+            <h3 class="font-display text-2xl sm:text-3xl font-bold text-nuit leading-snug">
+              {feature.title}
+            </h3>
+          </div>
+          <!-- Body -->
+          <p class="text-warm-600 text-base sm:text-lg leading-relaxed max-w-md mb-6">
+            {feature.body}
           </p>
-
-          <div class="flex flex-col sm:flex-row items-center lg:items-start gap-3 mb-6">
-            <Button variant="primary" size="lg" href="/onboarding">
-              Créer mon compte
-            </Button>
-            <Button variant="ghost" size="lg" href="/login">
-              J'ai déjà un compte
-            </Button>
-          </div>
-
-          <div class="flex flex-wrap items-center justify-center lg:justify-start gap-x-5 gap-y-2 text-sm text-warm-600">
-            <span class="flex items-center gap-1.5">
-              <Check size={14} class="text-mousse-500" /> Prêt en 1 minute
-            </span>
-          </div>
+          <!-- Micro-CTA -->
+          <a href="/onboarding" class="inline-flex items-center gap-1.5 text-sienne-500 font-semibold text-sm hover:text-sienne-600 transition-colors group">
+            {feature.cta}
+            <ArrowRight class="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
+          </a>
         </div>
 
-        <!-- Product mockup: layered journal scene -->
-        <div class="hidden lg:block relative hero-mockup-area">
-
-          <!-- Floating badge: AI agent (left side, mid-height) -->
-          <div class="absolute -left-14 top-[28%] z-20 animate-float" style="animation-delay:-7s;">
-            <div class="hero-badge rounded-2xl px-3.5 py-2.5 max-w-50">
-              <div class="flex items-start gap-2.5">
-                <div class="w-7 h-7 bg-miel-100 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
-                  <Sparkles size={13} class="text-miel-600" />
-                </div>
-                <div class="min-w-0">
-                  <p class="text-[10px] text-warm-500 font-medium mb-0.5">Vous avez dit :</p>
-                  <p class="text-[11px] text-warm-800 font-semibold leading-snug italic">"Remplis le carnet d'Emma, elle a bien mangé et dormi 1h30"</p>
-                </div>
+        <!-- App window mockup -->
+        <div
+          class="feature-window"
+          class:lg:order-1={!isEven}
+          class:is-visible={sectionVisible(sectionId)}
+          class:is-focused={sectionFocused(sectionId)}
+          class:tilt-left={isEven}
+          class:tilt-right={!isEven}
+        >
+          <div class="app-chrome">
+            <!-- Title bar -->
+            <div class="chrome-bar">
+              <div class="chrome-dots">
+                <span class="dot dot-miel"></span>
+                <span class="dot dot-sienne"></span>
+                <span class="dot dot-mousse"></span>
+              </div>
+              <span class="chrome-title">Le Cocon</span>
+              <div class="chrome-dots opacity-0">
+                <span class="dot"></span><span class="dot"></span><span class="dot"></span>
               </div>
             </div>
-          </div>
-
-          <!-- Main journal card -->
-          <div class="relative z-10 animate-float" style="animation-delay:-1s;">
-            <div class="hero-card-main rounded-3xl p-5 max-w-88 mx-auto">
-              <!-- Header -->
-              <div class="flex items-center justify-between mb-4">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-xl bg-miel-100 flex items-center justify-center font-bold text-sm text-miel-700">E</div>
-                  <div>
-                    <p class="text-sm font-bold text-warm-900">Emma L.</p>
-                    <p class="text-[11px] text-warm-500">Mercredi 12 mars</p>
-                  </div>
-                </div>
-                <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-mousse-50 border border-mousse-200">
-                  <Smile size={12} class="text-mousse-600" />
-                  <span class="text-[11px] font-semibold text-mousse-600">Joyeuse</span>
-                </div>
-              </div>
-
-              <!-- Meals with PlateVisual -->
-              <div class="glass-2 rounded-xl p-3 mb-2.5">
-                <div class="flex items-center gap-2 mb-2.5">
-                  <UtensilsCrossed size={13} class="text-sienne-500" />
-                  <span class="text-[11px] font-semibold text-warm-700 uppercase tracking-wide">Repas</span>
-                </div>
-                <div class="flex justify-around">
-                  {#each [
-                    { label: 'Matin', level: 2 as const },
-                    { label: 'Déjeuner', level: 3 as const },
-                    { label: 'Goûter', level: 1 as const }
-                  ] as meal}
-                    <div class="flex flex-col items-center gap-1">
-                      <PlateVisual level={meal.level} size="sm" />
-                      <span class="text-[10px] text-warm-500 font-medium">{meal.label}</span>
+            <!-- Content -->
+            <div class="chrome-body">
+              {#if feature.mockup === 'journal'}
+                <div class="mock-journal">
+                  <div class="mock-header">
+                    <div class="mock-avatar mock-avatar-e">E</div>
+                    <div>
+                      <div class="mock-name">Emma Dupont</div>
+                      <div class="mock-date">Mercredi 26 mars 2026</div>
                     </div>
-                  {/each}
-                </div>
-              </div>
-
-              <!-- Nap -->
-              <div class="glass-2 rounded-xl p-3 mb-2.5">
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-2">
-                    <Moon size={13} class="text-bleu-500" />
-                    <span class="text-[11px] font-semibold text-warm-700 uppercase tracking-wide">Sieste</span>
+                    <span class="mock-mood">Joyeuse</span>
                   </div>
-                  <div class="flex items-center gap-1.5">
-                    <Clock size={11} class="text-bleu-400" />
-                    <span class="text-xs text-warm-700">13h15 - 14h45</span>
-                    <span class="text-[10px] text-bleu-500 font-medium">(1h30)</span>
+                  <div class="mock-grid">
+                    <div class="mock-card-inner">
+                      <div class="mock-label">Dejeuner</div>
+                      <div class="mock-value">Puree de courgettes, poulet</div>
+                      <div class="mock-plates">
+                        <span class="plate plate-full"></span>
+                        <span class="plate plate-full"></span>
+                        <span class="plate plate-half"></span>
+                        <span class="plate plate-empty"></span>
+                      </div>
+                    </div>
+                    <div class="mock-card-inner">
+                      <div class="mock-label">Sieste</div>
+                      <div class="mock-value">12h30 — 14h45</div>
+                      <div class="mock-badge badge-bleu">2h15 de sommeil</div>
+                    </div>
+                    <div class="mock-card-inner">
+                      <div class="mock-label">Gouter</div>
+                      <div class="mock-value">Compote pomme-poire, biscuit</div>
+                      <div class="mock-plates">
+                        <span class="plate plate-full"></span>
+                        <span class="plate plate-full"></span>
+                        <span class="plate plate-full"></span>
+                        <span class="plate plate-full"></span>
+                      </div>
+                    </div>
+                    <div class="mock-card-inner">
+                      <div class="mock-label">Changes</div>
+                      <div class="mock-value">3 changes aujourd'hui</div>
+                      <div class="mock-badge badge-mousse">Tout va bien</div>
+                    </div>
+                  </div>
+                  <div class="mock-notes">
+                    <div class="mock-label">Notes</div>
+                    <div class="mock-note-text">Emma a adore jouer avec les cubes ce matin. Elle commence a empiler 3 blocs !</div>
                   </div>
                 </div>
-              </div>
 
-              <!-- Note -->
-              <div class="glass-2 rounded-xl p-3">
-                <div class="flex items-center gap-2 mb-1.5">
-                  <BookOpen size={13} class="text-miel-600" />
-                  <span class="text-[11px] font-semibold text-warm-700 uppercase tracking-wide">Note</span>
-                </div>
-                <p class="text-[13px] text-warm-700 leading-snug">Emma a adoré le bac à sable ce matin, elle a joué dehors toute la matinée.</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Floating badges below the card -->
-          <div class="flex items-center justify-between mt-4 px-2">
-            <div class="hero-badge rounded-2xl px-3.5 py-2 flex items-center gap-2.5 animate-float" style="animation-delay:-4s;">
-              <div class="w-7 h-7 bg-mousse-100 rounded-lg flex items-center justify-center">
-                <Check size={13} class="text-mousse-600" />
-              </div>
-              <div>
-                <p class="text-[11px] font-semibold text-warm-800">Maman d'Emma a consulté le carnet</p>
-                <p class="text-[10px] text-mousse-600 font-medium">Lu il y a 3 min</p>
-              </div>
-            </div>
-            <div class="hero-badge rounded-xl px-3 py-2 flex items-center gap-2 animate-float" style="animation-delay:-9s;">
-              <div class="w-7 h-7 bg-miel-100 rounded-lg flex items-center justify-center">
-                <BookOpen size={13} class="text-miel-600" />
-              </div>
-              <span class="text-[11px] font-semibold text-warm-700">3/4 carnets remplis</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-
-  <!-- ═══════════════════════════════════════
-       LE PROBLEME — Pourquoi Le Cocon ?
-       ═══════════════════════════════════════ -->
-  <section class="py-20 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-5xl mx-auto">
-      <div class="text-center mb-14">
-        <h2 class="animate-on-scroll fade-up font-display text-3xl sm:text-4xl font-bold text-warm-900 mb-4">
-          Vous reconnaissez ça ?
-        </h2>
-        <p class="animate-on-scroll fade-up delay-100 text-lg text-warm-600 max-w-2xl mx-auto">
-          Si vous êtes assistante maternelle, vous faites probablement ça tous les jours.
-        </p>
-      </div>
-
-      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {#each [
-          { icon: MessageSquare, text: "Envoyer des SMS aux parents un par un pour raconter la journée" },
-          { icon: BookOpen, text: "Remplir un carnet papier que les parents oublient chez vous" },
-          { icon: Clock, text: "Passer du temps à expliquer les mêmes choses au téléphone le soir" },
-          { icon: Baby, text: "Oublier un détail important sur la journée d'un enfant" }
-        ] as item}
-          <div class="animate-on-scroll fade-up">
-            <div class="glass-1 rounded-2xl p-5 h-full">
-              <div class="w-10 h-10 rounded-xl bg-argile-400/10 flex items-center justify-center mb-3">
-                <item.icon size={20} class="text-argile-500" />
-              </div>
-              <p class="text-sm text-warm-700 leading-relaxed">{item.text}</p>
-            </div>
-          </div>
-        {/each}
-      </div>
-
-      <div class="animate-on-scroll fade-up text-center mt-10">
-        <p class="text-lg font-display font-bold text-warm-900">
-          Le Cocon règle tout ça. En quelques clics, c'est fait.
-        </p>
-      </div>
-    </div>
-  </section>
-
-
-  <!-- ═══════════════════════════════════════
-       FONCTIONNALITES
-       ═══════════════════════════════════════ -->
-  <section id="fonctionnalites" class="py-20 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-6xl mx-auto">
-      <div class="text-center mb-14">
-        <h2 class="animate-on-scroll fade-up font-display text-3xl sm:text-4xl font-bold text-warm-900 mb-4">
-          Ce que fait Le Cocon, concrètement
-        </h2>
-        <p class="animate-on-scroll fade-up delay-100 text-lg text-warm-600 max-w-2xl mx-auto">
-          Des outils simples pour noter la journée des enfants et la partager avec les parents.
-        </p>
-      </div>
-
-      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-
-        <div class="animate-on-scroll fade-up delay-100">
-          <div class="feature-card glass-1 rounded-3xl p-6 h-full">
-            <div class="w-13 h-13 bg-miel-100 rounded-2xl flex items-center justify-center mb-4">
-              <BookOpen size={26} class="text-miel-600" />
-            </div>
-            <h3 class="font-display font-bold text-lg text-warm-900 mb-2">Carnet quotidien</h3>
-            <p class="text-sm text-warm-700 leading-relaxed">
-              Remplissez une fiche par enfant chaque jour : repas, sieste, humeur, changes, santé, notes.
-              Les parents la voient immédiatement.
-            </p>
-          </div>
-        </div>
-
-        <div class="animate-on-scroll fade-up delay-200">
-          <div class="feature-card glass-1 rounded-3xl p-6 h-full">
-            <div class="w-13 h-13 bg-sienne-100 rounded-2xl flex items-center justify-center mb-4">
-              <UtensilsCrossed size={26} class="text-sienne-500" />
-            </div>
-            <h3 class="font-display font-bold text-lg text-warm-900 mb-2">Suivi des repas</h3>
-            <p class="text-sm text-warm-700 leading-relaxed">
-              Notez ce que l'enfant a mangé et en quelle quantité. Le menu du jour peut être pré-rempli pour gagner du temps.
-            </p>
-          </div>
-        </div>
-
-        <div class="animate-on-scroll fade-up delay-300">
-          <div class="feature-card glass-1 rounded-3xl p-6 h-full">
-            <div class="w-13 h-13 bg-bleu-400/15 rounded-2xl flex items-center justify-center mb-4">
-              <Moon size={26} class="text-bleu-500" />
-            </div>
-            <h3 class="font-display font-bold text-lg text-warm-900 mb-2">Sieste et humeur</h3>
-            <p class="text-sm text-warm-700 leading-relaxed">
-              Indiquez les heures de sieste, la qualité du sommeil et l'humeur de l'enfant.
-              Les parents savent comment s'est passé la journée.
-            </p>
-          </div>
-        </div>
-
-        <div class="animate-on-scroll fade-up delay-100">
-          <div class="feature-card glass-1 rounded-3xl p-6 h-full">
-            <div class="w-13 h-13 bg-mousse-100 rounded-2xl flex items-center justify-center mb-4">
-              <Newspaper size={26} class="text-mousse-600" />
-            </div>
-            <h3 class="font-display font-bold text-lg text-warm-900 mb-2">News</h3>
-            <p class="text-sm text-warm-700 leading-relaxed">
-              Partagez des nouvelles, des photos et des moments forts avec les parents de chaque enfant. Ils voient tout depuis leur téléphone.
-            </p>
-          </div>
-        </div>
-
-        <div class="animate-on-scroll fade-up delay-200">
-          <div class="feature-card glass-1 rounded-3xl p-6 h-full">
-            <div class="w-13 h-13 bg-soleil-400/15 rounded-2xl flex items-center justify-center mb-4">
-              <Calendar size={26} class="text-soleil-500" />
-            </div>
-            <h3 class="font-display font-bold text-lg text-warm-900 mb-2">Absences et calendrier</h3>
-            <p class="text-sm text-warm-700 leading-relaxed">
-              Les parents signalent les absences et retards directement dans l'appli. Vous avez une vue calendrier de tout.
-            </p>
-          </div>
-        </div>
-
-        <div class="animate-on-scroll fade-up delay-300">
-          <div class="feature-card glass-1 rounded-3xl p-6 h-full">
-            <div class="w-13 h-13 bg-miel-100 rounded-2xl flex items-center justify-center mb-4">
-              <Sparkles size={26} class="text-miel-600" />
-            </div>
-            <h3 class="font-display font-bold text-lg text-warm-900 mb-2">Assistant IA</h3>
-            <p class="text-sm text-warm-700 leading-relaxed">
-              Demandez "Qu'a mangé Lucas cette semaine ?" et l'assistant vous répond en cherchant dans les carnets. Pratique pour les bilans.
-            </p>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  </section>
-
-
-  <!-- ═══════════════════════════════════════
-       COMMENT CA MARCHE
-       ═══════════════════════════════════════ -->
-  <section id="comment-ca-marche" class="py-20 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-4xl mx-auto">
-      <div class="text-center mb-14">
-        <h2 class="animate-on-scroll fade-up font-display text-3xl sm:text-4xl font-bold text-warm-900 mb-4">
-          Prêt en 3 étapes
-        </h2>
-        <p class="animate-on-scroll fade-up delay-100 text-lg text-warm-600">
-          Pas besoin d'être à l'aise avec l'informatique. C'est fait pour être simple.
-        </p>
-      </div>
-
-      <div class="relative">
-        <!-- Connecting line (desktop) — animated on scroll -->
-        <div class="hidden md:block absolute top-8 left-[16.66%] right-[16.66%] h-[2px] z-0">
-          <div class="animate-on-scroll steps-line h-full rounded-full bg-linear-to-r from-miel-200 via-miel-400 to-miel-200"></div>
-        </div>
-
-        <div class="grid md:grid-cols-3 gap-10">
-          {#each [
-            { num: '1', title: "Créez votre compte", desc: "Choisissez \"assistante maternelle\" ou \"parent\". Renseignez votre nom et votre email. C'est tout." },
-            { num: '2', title: "Ajoutez les enfants", desc: "L'assistante ajoute chaque enfant et génère un code d'invitation. Le parent entre ce code pour se connecter." },
-            { num: '3', title: "Remplissez et partagez", desc: "Chaque jour, l'assistante remplit le carnet. Les parents le voient tout de suite sur leur téléphone." }
-          ] as step, i}
-            <div class="animate-on-scroll fade-up delay-{(i + 1) * 100} text-center">
-              <div class="relative z-10 w-16 h-16 mx-auto glass-1 rounded-2xl flex items-center justify-center mb-5" style="box-shadow: 0 8px 24px rgba(194,101,58,0.1);">
-                <span class="font-display font-bold text-2xl text-miel-600">{step.num}</span>
-              </div>
-              <h3 class="font-display font-bold text-lg text-warm-900 mb-2">{step.title}</h3>
-              <p class="text-sm text-warm-700 leading-relaxed">{step.desc}</p>
-            </div>
-          {/each}
-        </div>
-      </div>
-    </div>
-  </section>
-
-
-  <!-- ═══════════════════════════════════════
-       POUR QUI ?
-       ═══════════════════════════════════════ -->
-  <section class="py-20 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-5xl mx-auto">
-      <div class="text-center mb-14">
-        <h2 class="animate-on-scroll fade-up font-display text-3xl sm:text-4xl font-bold text-warm-900 mb-4">
-          Pour les assistantes maternelles et les parents
-        </h2>
-      </div>
-
-      <div class="grid md:grid-cols-2 gap-6">
-        <!-- Assistantes -->
-        <div class="animate-on-scroll fade-left">
-          <div class="glass-1 rounded-3xl p-7 h-full">
-            <div class="flex items-center gap-3 mb-5">
-              <div class="w-12 h-12 bg-miel-100 rounded-xl flex items-center justify-center">
-                <Heart size={24} class="text-miel-600" />
-              </div>
-              <div>
-                <h3 class="font-display font-bold text-xl text-warm-900">Assistantes maternelles</h3>
-                <p class="text-sm text-warm-600">Gagnez du temps au quotidien</p>
-              </div>
-            </div>
-            <ul class="space-y-3">
-              {#each [
-                "Remplissez les carnets en quelques clics, pas de cahier à transporter",
-                "La saisie rapide permet de faire tous les enfants en une seule fois",
-                "Les parents sont informés automatiquement, plus besoin de les appeler",
-                "Vos notes et historiques sont sauvegardés, rien ne se perd",
-                "Le menu du jour se pré-remplit dans les fiches"
-              ] as item}
-                <li class="flex items-start gap-3">
-                  <div class="w-5 h-5 rounded-full bg-mousse-100 flex items-center justify-center shrink-0 mt-0.5">
-                    <Check size={12} class="text-mousse-600" />
+              {:else if feature.mockup === 'news'}
+                <div class="mock-news">
+                  <div class="mock-news-item">
+                    <div class="mock-avatar mock-avatar-t">T</div>
+                    <div class="mock-news-content">
+                      <div class="mock-news-top">
+                        <span class="mock-name">Theo Martin</span>
+                        <span class="mock-time">11h42</span>
+                      </div>
+                      <div class="mock-news-text">Premier dessin au doigt ! Il a choisi le bleu et le jaune.</div>
+                      <div class="mock-news-img shimmer-slot"></div>
+                    </div>
                   </div>
-                  <span class="text-sm text-warm-800">{item}</span>
-                </li>
-              {/each}
-            </ul>
-          </div>
-        </div>
-
-        <!-- Parents -->
-        <div class="animate-on-scroll fade-right delay-200">
-          <div class="glass-1 rounded-3xl p-7 h-full">
-            <div class="flex items-center gap-3 mb-5">
-              <div class="w-12 h-12 bg-bleu-400/15 rounded-xl flex items-center justify-center">
-                <Users size={24} class="text-bleu-500" />
-              </div>
-              <div>
-                <h3 class="font-display font-bold text-xl text-warm-900">Parents</h3>
-                <p class="text-sm text-warm-600">Suivez la journée de votre enfant</p>
-              </div>
-            </div>
-            <ul class="space-y-3">
-              {#each [
-                "Consultez le carnet du jour : repas, sieste, humeur, santé",
-                "Recevez les nouvelles et photos dans les news",
-                "Signalez une absence ou un retard en 2 clics",
-                "Envoyez des notes à l'assistante (médicaments, consignes...)",
-                "Posez des questions à l'assistant IA sur l'historique"
-              ] as item}
-                <li class="flex items-start gap-3">
-                  <div class="w-5 h-5 rounded-full bg-bleu-400/15 flex items-center justify-center shrink-0 mt-0.5">
-                    <Check size={12} class="text-bleu-500" />
+                  <div class="mock-news-item">
+                    <div class="mock-avatar mock-avatar-l">L</div>
+                    <div class="mock-news-content">
+                      <div class="mock-news-top">
+                        <span class="mock-name">Lucie Bernard</span>
+                        <span class="mock-time">10h15</span>
+                      </div>
+                      <div class="mock-news-text">Lucie a dit "encore" pour la premiere fois en tendant son assiette !</div>
+                    </div>
                   </div>
-                  <span class="text-sm text-warm-800">{item}</span>
-                </li>
-              {/each}
-            </ul>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-
-  <!-- ═══════════════════════════════════════
-       TEMOIGNAGES
-       ═══════════════════════════════════════ -->
-  <section id="temoignages" class="py-20 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-6xl mx-auto">
-      <div class="text-center mb-14">
-        <h2 class="animate-on-scroll fade-up font-display text-3xl sm:text-4xl font-bold text-warm-900 mb-4">
-          Ce qu'en disent les utilisateurs
-        </h2>
-      </div>
-
-      <div class="grid md:grid-cols-3 gap-5">
-
-        <div class="animate-on-scroll fade-up delay-100">
-          <div class="testimonial-card glass-1 rounded-3xl p-6 h-full">
-            <div class="flex items-center gap-0.5 mb-4">
-              {#each Array(5) as _}
-                <Star size={15} class="text-soleil-400 fill-soleil-400" />
-              {/each}
-            </div>
-            <blockquote class="text-sm text-warm-800 mb-5 leading-relaxed">
-              "Je gardais 4 enfants et je passais mes soirées à envoyer des messages aux parents.
-              Maintenant je remplis le carnet pendant la sieste et c'est fini. Ça me change la vie."
-            </blockquote>
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 bg-linear-to-br from-miel-200 to-miel-300 rounded-full flex items-center justify-center font-semibold text-sm text-miel-800">
-                NB
-              </div>
-              <div>
-                <p class="text-sm font-semibold text-warm-900">Nathalie B.</p>
-                <p class="text-xs text-warm-500">Assistante maternelle, Nantes</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="animate-on-scroll fade-up delay-200">
-          <div class="testimonial-card glass-1 rounded-3xl p-6 h-full">
-            <div class="flex items-center gap-0.5 mb-4">
-              {#each Array(5) as _}
-                <Star size={15} class="text-soleil-400 fill-soleil-400" />
-              {/each}
-            </div>
-            <blockquote class="text-sm text-warm-800 mb-5 leading-relaxed">
-              "Le soir en rentrant du travail, je sais déjà ce qu'il a mangé, combien de temps il a dormi
-              et comment il allait. Ça me rassure énormément."
-            </blockquote>
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 bg-linear-to-br from-bleu-400/30 to-bleu-400/50 rounded-full flex items-center justify-center font-semibold text-sm text-bleu-500">
-                SR
-              </div>
-              <div>
-                <p class="text-sm font-semibold text-warm-900">Sophie R.</p>
-                <p class="text-xs text-warm-500">Maman de Gabriel, 14 mois</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="animate-on-scroll fade-up delay-300">
-          <div class="testimonial-card glass-1 rounded-3xl p-6 h-full">
-            <div class="flex items-center gap-0.5 mb-4">
-              {#each Array(5) as _}
-                <Star size={15} class="text-soleil-400 fill-soleil-400" />
-              {/each}
-            </div>
-            <blockquote class="text-sm text-warm-800 mb-5 leading-relaxed">
-              "J'avais peur que ce soit compliqué mais pas du tout. J'ai créé mon compte en 2 minutes
-              et j'ai commencé à remplir les fiches le jour même. Très bien pensé."
-            </blockquote>
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 bg-linear-to-br from-sienne-200 to-sienne-300 rounded-full flex items-center justify-center font-semibold text-sm text-sienne-800">
-                MC
-              </div>
-              <div>
-                <p class="text-sm font-semibold text-warm-900">Marie C.</p>
-                <p class="text-xs text-warm-500">Assistante maternelle, Lyon</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  </section>
-
-
-  <!-- ═══════════════════════════════════════
-       SECURITE
-       ═══════════════════════════════════════ -->
-  <section class="py-20 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-4xl mx-auto">
-      <div class="animate-on-scroll scale-in bg-warm-900 rounded-3xl p-8 sm:p-12 relative overflow-hidden">
-        <!-- Decorative -->
-        <div class="absolute top-0 left-0 w-40 h-40 bg-miel-500/8 rounded-full -translate-x-1/2 -translate-y-1/2"></div>
-        <div class="absolute bottom-0 right-0 w-48 h-48 bg-miel-500/8 rounded-full translate-x-1/2 translate-y-1/2"></div>
-
-        <div class="relative text-center">
-          <div class="w-14 h-14 bg-miel-500/15 rounded-2xl flex items-center justify-center mx-auto mb-5">
-            <Shield size={28} class="text-miel-300" />
-          </div>
-
-          <h2 class="font-display text-2xl sm:text-3xl font-bold text-warm-50 mb-4">
-            Vos données sont protégées
-          </h2>
-
-          <p class="text-warm-300 mb-8 max-w-lg mx-auto text-sm leading-relaxed">
-            On parle d'enfants, la sécurité n'est pas optionnelle.
-            Voici ce qu'on fait pour protéger vos informations.
-          </p>
-
-          <div class="grid sm:grid-cols-3 gap-6 text-left">
-            <div class="flex items-start gap-3">
-              <div class="w-9 h-9 bg-miel-500/15 rounded-xl flex items-center justify-center shrink-0">
-                <Lock size={18} class="text-miel-300" />
-              </div>
-              <div>
-                <p class="font-semibold text-warm-50 text-sm">Chiffrement</p>
-                <p class="text-xs text-warm-400">Toutes les données sont chiffrées en transit et au repos</p>
-              </div>
-            </div>
-            <div class="flex items-start gap-3">
-              <div class="w-9 h-9 bg-miel-500/15 rounded-xl flex items-center justify-center shrink-0">
-                <Shield size={18} class="text-miel-300" />
-              </div>
-              <div>
-                <p class="font-semibold text-warm-50 text-sm">Hébergement français</p>
-                <p class="text-xs text-warm-400">Serveurs Scaleway en France, conformes RGPD</p>
-              </div>
-            </div>
-            <div class="flex items-start gap-3">
-              <div class="w-9 h-9 bg-miel-500/15 rounded-xl flex items-center justify-center shrink-0">
-                <Users size={18} class="text-miel-300" />
-              </div>
-              <div>
-                <p class="font-semibold text-warm-50 text-sm">Accès restreint</p>
-                <p class="text-xs text-warm-400">Seuls vous et les parents liés à un enfant voient ses infos</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-
-  <!-- ═══════════════════════════════════════
-       TARIFS
-       ═══════════════════════════════════════ -->
-  <section id="tarifs" class="py-20 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-lg mx-auto text-center">
-      <h2 class="animate-on-scroll fade-up font-display text-3xl sm:text-4xl font-bold text-warm-900 mb-4">
-        Gratuit pendant le lancement
-      </h2>
-      <p class="animate-on-scroll fade-up delay-100 text-warm-600 mb-10">
-        Le Cocon est en phase de lancement. Toutes les fonctionnalités sont gratuites, sans engagement.
-      </p>
-
-      <div class="animate-on-scroll scale-in delay-200">
-        <div class="glass-1 rounded-3xl p-8" style="box-shadow: 0 16px 48px rgba(194,101,58,0.12);">
-          <p class="text-sm font-semibold text-miel-600 uppercase tracking-wider mb-2">Offre de lancement</p>
-          <div class="flex items-baseline justify-center gap-1 mb-2">
-            <span class="font-display text-5xl font-bold text-warm-900">0</span>
-            <span class="text-2xl font-display font-bold text-warm-900">&euro;</span>
-          </div>
-          <p class="text-sm text-warm-500 mb-6">par mois, sans limite</p>
-
-          <ul class="space-y-3 text-left mb-8">
-            {#each [
-              "Carnet quotidien complet",
-              "Nombre d'enfants illimité",
-              "News et photos",
-              "Calendrier des absences",
-              "Notes aux parents",
-              "Assistant IA",
-              "Codes d'invitation parents"
-            ] as item}
-              <li class="flex items-center gap-3">
-                <div class="w-5 h-5 rounded-full bg-mousse-100 flex items-center justify-center shrink-0">
-                  <Check size={12} class="text-mousse-600" />
+                  <div class="mock-news-item">
+                    <div class="mock-avatar mock-avatar-e">E</div>
+                    <div class="mock-news-content">
+                      <div class="mock-news-top">
+                        <span class="mock-name">Emma Dupont</span>
+                        <span class="mock-time">09h30</span>
+                      </div>
+                      <div class="mock-news-text">Seance comptines ce matin — Emma connait presque toute la chanson des crocodiles.</div>
+                    </div>
+                  </div>
                 </div>
-                <span class="text-sm text-warm-800">{item}</span>
-              </li>
-            {/each}
-          </ul>
 
-          <Button variant="primary" size="lg" href="/onboarding" class="w-full">
-            Créer mon compte
-          </Button>
-          <p class="text-xs text-warm-400 mt-3">Pas de carte bancaire demandée</p>
-        </div>
-      </div>
-    </div>
-  </section>
+              {:else if feature.mockup === 'notes'}
+                <div class="mock-notes-list">
+                  <div class="mock-note-card">
+                    <div class="mock-note-badge badge-sienne">Absence</div>
+                    <div class="mock-note-title">Emma absente jeudi 27 mars</div>
+                    <div class="mock-note-meta">Par Mme Dupont · Hier, 20h30</div>
+                    <div class="mock-note-ack">
+                      <span class="ack-dot ack-done"></span>
+                      Lu et confirme par Marie
+                    </div>
+                  </div>
+                  <div class="mock-note-card">
+                    <div class="mock-note-badge badge-soleil">Sante</div>
+                    <div class="mock-note-title">Theo a un peu de fievre</div>
+                    <div class="mock-note-meta">Par M. Martin · Ce matin, 07h45</div>
+                    <div class="mock-note-response">
+                      <div class="mock-note-response-label">Reponse de Marie :</div>
+                      <div class="mock-note-response-text">"Bien note, je surveille sa temperature. Je vous tiens au courant."</div>
+                    </div>
+                  </div>
+                  <div class="mock-note-card">
+                    <div class="mock-note-badge badge-warm">Logistique</div>
+                    <div class="mock-note-title">Remettre le doudou lapin dans le sac</div>
+                    <div class="mock-note-meta">Par Mme Bernard · Lundi</div>
+                    <div class="mock-note-ack">
+                      <span class="ack-dot ack-pending"></span>
+                      En attente de confirmation
+                    </div>
+                  </div>
+                </div>
 
+              {:else if feature.mockup === 'menus'}
+                <div class="mock-menus">
+                  <div class="mock-menu-header">Semaine du 24 mars</div>
+                  <div class="mock-menu-grid">
+                    <div class="mock-menu-day">
+                      <div class="mock-menu-day-name">Lun</div>
+                      <div class="mock-menu-meal">
+                        <span class="mock-meal-type">Dej.</span>
+                        Hachis parmentier, salade verte
+                      </div>
+                      <div class="mock-menu-meal">
+                        <span class="mock-meal-type">Gou.</span>
+                        Yaourt, tartine de confiture
+                      </div>
+                    </div>
+                    <div class="mock-menu-day">
+                      <div class="mock-menu-day-name">Mar</div>
+                      <div class="mock-menu-meal">
+                        <span class="mock-meal-type">Dej.</span>
+                        Filet de colin, riz, epinards
+                      </div>
+                      <div class="mock-menu-meal">
+                        <span class="mock-meal-type">Gou.</span>
+                        Compote de poires, galette
+                      </div>
+                    </div>
+                    <div class="mock-menu-day">
+                      <div class="mock-menu-day-name">Mer</div>
+                      <div class="mock-menu-meal">
+                        <span class="mock-meal-type">Dej.</span>
+                        Puree de carottes, jambon
+                      </div>
+                      <div class="mock-menu-meal">
+                        <span class="mock-meal-type">Gou.</span>
+                        Banane, petit beurre
+                      </div>
+                    </div>
+                    <div class="mock-menu-day mock-menu-day-today">
+                      <div class="mock-menu-day-name">Aujourd'hui</div>
+                      <div class="mock-menu-meal">
+                        <span class="mock-meal-type">Dej.</span>
+                        Puree de courgettes, poulet
+                      </div>
+                      <div class="mock-menu-meal">
+                        <span class="mock-meal-type">Gou.</span>
+                        Compote pomme-poire, biscuit
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-  <!-- ═══════════════════════════════════════
-       FAQ
-       ═══════════════════════════════════════ -->
-  <section class="py-20 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-2xl mx-auto">
-      <h2 class="animate-on-scroll fade-up font-display text-3xl sm:text-4xl font-bold text-warm-900 mb-10 text-center">
-        Questions fréquentes
-      </h2>
+              {:else if feature.mockup === 'ai'}
+                <div class="mock-ai">
+                  <div class="mock-ai-chat">
+                    <div class="mock-ai-msg mock-ai-user">
+                      <div class="mock-ai-bubble user-bubble">Emma a bien mange son dejeuner, sieste de 12h30 a 14h45, 3 changes, elle etait joyeuse</div>
+                    </div>
+                    <div class="mock-ai-msg mock-ai-bot">
+                      <div class="mock-ai-avatar">
+                        <Sparkles class="w-3.5 h-3.5 text-miel-500" />
+                      </div>
+                      <div class="mock-ai-bubble bot-bubble">
+                        <div class="mock-ai-label">Journal cree pour Emma :</div>
+                        <div class="mock-ai-result">
+                          <div class="mock-ai-line"><span class="mock-ai-key">Dejeuner</span> Bien mange</div>
+                          <div class="mock-ai-line"><span class="mock-ai-key">Sieste</span> 12h30 — 14h45 (2h15)</div>
+                          <div class="mock-ai-line"><span class="mock-ai-key">Changes</span> 3</div>
+                          <div class="mock-ai-line"><span class="mock-ai-key">Humeur</span> Joyeuse</div>
+                        </div>
+                        <div class="mock-ai-confirm">Journal enregistre</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="mock-ai-input">
+                    <div class="mock-ai-input-placeholder">Decrivez la journee naturellement...</div>
+                  </div>
+                </div>
 
-      <div class="space-y-3">
-        {#each faqs as faq, i}
-          <div class="animate-on-scroll fade-up">
-            <button
-              type="button"
-              onclick={() => toggleFaq(i)}
-              class="w-full glass-1 rounded-2xl px-6 py-4 text-left transition-colors hover:bg-warm-50/40"
-              aria-expanded={openFaq === i}
-            >
-              <div class="flex items-center justify-between gap-4">
-                <span class="text-sm font-semibold text-warm-900">{faq.q}</span>
-                <ChevronDown
-                  size={18}
-                  class="text-warm-400 shrink-0 transition-transform duration-300
-                    {openFaq === i ? 'rotate-180' : ''}"
-                />
-              </div>
-              {#if openFaq === i}
-                <p class="text-sm text-warm-700 mt-3 leading-relaxed pr-8">{faq.a}</p>
+              {:else if feature.mockup === 'invite'}
+                <div class="mock-invite">
+                  <div class="mock-invite-card">
+                    <div class="mock-invite-child">
+                      <div class="mock-avatar mock-avatar-e">E</div>
+                      <div>
+                        <div class="mock-name">Emma Dupont</div>
+                        <div class="mock-date">Inviter un parent</div>
+                      </div>
+                    </div>
+                    <div class="mock-invite-code">
+                      <div class="mock-invite-label">Code d'invitation</div>
+                      <div class="mock-invite-value">AX7K-M2PL</div>
+                      <div class="mock-invite-expiry">Expire dans 48h</div>
+                    </div>
+                    <div class="mock-invite-qr">
+                      <!-- Stylized QR placeholder -->
+                      <div class="mock-qr-grid">
+                        {#each Array(7) as _, row}
+                          <div class="mock-qr-row">
+                            {#each Array(7) as _, col}
+                              <div
+                                class="mock-qr-cell"
+                                class:filled={(row + col) % 3 === 0 || (row * col) % 5 === 1 || (row === 0 || row === 6 || col === 0 || col === 6) && (row < 3 || row > 3) && (col < 3 || col > 3)}
+                              ></div>
+                            {/each}
+                          </div>
+                        {/each}
+                      </div>
+                      <div class="mock-invite-scan">Scanner pour rejoindre</div>
+                    </div>
+                  </div>
+                </div>
               {/if}
-            </button>
+            </div>
           </div>
-        {/each}
+        </div>
       </div>
     </div>
-  </section>
+  {/each}
+</section>
 
+<!-- ════════════════════════════════════════════════════════════════════════
+     STATS — proof section
+     ════════════════════════════════════════════════════════════════════════ -->
 
-  <!-- ═══════════════════════════════════════
-       CTA FINAL
-       ═══════════════════════════════════════ -->
-  <section class="py-20 px-4 sm:px-6 lg:px-8">
-    <div class="max-w-3xl mx-auto text-center">
-      <h2 class="animate-on-scroll fade-up font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-warm-900 mb-6 leading-tight">
-        Prête à essayer ?
+<section id="stats-section" class="stats-section relative py-24 sm:py-32 px-6 overflow-hidden">
+  <div class="stats-bg" aria-hidden="true"></div>
+  <div class="relative z-10 max-w-5xl mx-auto">
+    <h2 class="font-display text-3xl sm:text-4xl font-bold text-soie text-center mb-16">
+      Des chiffres qui parlent d'eux-memes
+    </h2>
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-8 sm:gap-12">
+      {#each stats as stat, i}
+        <div class="text-center">
+          <div class="font-display text-5xl sm:text-6xl lg:text-7xl font-bold text-soie leading-none mb-3">
+            {#if stat.prefix}
+              {stat.prefix}
+            {:else}
+              {counterValues[i]}{stat.suffix}
+            {/if}
+          </div>
+          <div class="text-miel-200 text-sm sm:text-base">
+            {stat.label}
+          </div>
+        </div>
+      {/each}
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     TRUST — security & privacy
+     ════════════════════════════════════════════════════════════════════════ -->
+
+<section id="confiance" class="py-20 sm:py-28 px-6" data-section="trust">
+  <div class="max-w-4xl mx-auto text-center">
+    <div
+      class="section-reveal"
+      class:is-visible={sectionVisible('trust')}
+    >
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass-2 mb-8">
+        <Shield class="w-4 h-4 text-miel-500" />
+        <span class="text-sm font-medium text-warm-700">Securite & Confiance</span>
+      </div>
+      <h2 class="font-display text-3xl sm:text-4xl font-bold text-nuit mb-6">
+        Les donnees de vos enfants meritent le meilleur
       </h2>
-      <p class="animate-on-scroll fade-up delay-100 text-lg text-warm-600 mb-8 max-w-xl mx-auto">
-        Créez votre compte en 1 minute, ajoutez vos premiers enfants et commencez à remplir les journaux dès aujourd'hui.
-      </p>
-
-      <div class="animate-on-scroll fade-up delay-200 flex flex-col sm:flex-row items-center justify-center gap-3 mb-6">
-        <Button variant="primary" size="lg" href="/onboarding">
-          Créer mon compte gratuitement
-          <ArrowRight size={18} />
-        </Button>
-      </div>
-
-      <p class="animate-on-scroll fade-up delay-300 text-sm text-warm-500">
-        Gratuit &middot; Sans engagement &middot; Sans carte bancaire
+      <p class="text-warm-600 text-lg max-w-2xl mx-auto mb-12 leading-relaxed">
+        Chiffrement, hebergement en France, conformite RGPD, droit a l'export et a la suppression — parce que la confiance se construit sur des preuves, pas des promesses.
       </p>
     </div>
-  </section>
-
-
-  <!-- ═══════════════════════════════════════
-       FOOTER
-       ═══════════════════════════════════════ -->
-  <footer class="bg-warm-900 text-warm-300 py-14 px-4">
-    <div class="max-w-6xl mx-auto">
-      <div class="grid md:grid-cols-4 gap-10 mb-10">
-        <!-- Brand -->
-        <div class="md:col-span-2">
-          <div class="flex items-center gap-2.5 mb-4">
-            <img src="/favicon.png" alt="Le Cocon" class="w-9 h-9" />
-            <span class="font-display font-bold text-xl text-warm-50">Le Cocon</span>
-          </div>
-          <p class="text-sm text-warm-400 max-w-sm leading-relaxed">
-            Le cahier de liaison numérique pour les assistantes maternelles et les parents.
-            Simple, sécurisé, gratuit.
-          </p>
+    <div
+      class="grid grid-cols-1 sm:grid-cols-3 gap-6 section-reveal"
+      class:is-visible={sectionVisible('trust')}
+      style="transition-delay: 200ms"
+    >
+      <div class="trust-card glass-1 rounded-3xl p-6">
+        <div class="w-12 h-12 rounded-2xl bg-miel-100 flex items-center justify-center mb-4 mx-auto">
+          <Shield class="w-6 h-6 text-miel-600" />
         </div>
-
-        <!-- Navigation -->
-        <div>
-          <h4 class="font-semibold text-warm-50 mb-4 text-sm">Navigation</h4>
-          <ul class="space-y-2.5 text-sm">
-            <li><a href="#fonctionnalites" class="hover:text-warm-50 transition-colors">Fonctionnalités</a></li>
-            <li><a href="#comment-ca-marche" class="hover:text-warm-50 transition-colors">Comment ça marche</a></li>
-            <li><a href="#temoignages" class="hover:text-warm-50 transition-colors">Témoignages</a></li>
-            <li><a href="#tarifs" class="hover:text-warm-50 transition-colors">Tarifs</a></li>
-          </ul>
-        </div>
-
-        <!-- Legal -->
-        <div>
-          <h4 class="font-semibold text-warm-50 mb-4 text-sm">Légal</h4>
-          <ul class="space-y-2.5 text-sm">
-            <li><a href="/legal/mentions" class="hover:text-warm-50 transition-colors">Mentions légales</a></li>
-            <li><a href="/legal/confidentialite" class="hover:text-warm-50 transition-colors">Confidentialité</a></li>
-            <li><a href="/legal/cgu" class="hover:text-warm-50 transition-colors">CGU</a></li>
-          </ul>
-        </div>
+        <h3 class="font-display font-bold text-nuit mb-2">Chiffrement</h3>
+        <p class="text-warm-600 text-sm">Donnees chiffrees en transit et au repos. Aucun acces non autorise.</p>
       </div>
-
-      <div class="border-t border-warm-800 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <p class="text-xs text-warm-500">
-          &copy; 2025 Le Cocon. Tous droits réservés.
-        </p>
-        <p class="text-xs text-warm-500 flex items-center gap-1.5">
-          Fait avec <Heart size={12} class="text-argile-400" /> en France
-        </p>
+      <div class="trust-card glass-1 rounded-3xl p-6">
+        <div class="w-12 h-12 rounded-2xl bg-mousse-100 flex items-center justify-center mb-4 mx-auto">
+          <Users class="w-6 h-6 text-mousse-600" />
+        </div>
+        <h3 class="font-display font-bold text-nuit mb-2">RGPD natif</h3>
+        <p class="text-warm-600 text-sm">Export complet, suppression sur demande, consentement explicite.</p>
+      </div>
+      <div class="trust-card glass-1 rounded-3xl p-6">
+        <div class="w-12 h-12 rounded-2xl bg-bleu-100 flex items-center justify-center mb-4 mx-auto">
+          <Clock class="w-6 h-6 text-bleu-600" />
+        </div>
+        <h3 class="font-display font-bold text-nuit mb-2">Hebergement FR</h3>
+        <p class="text-warm-600 text-sm">Serveurs en France, sauvegardes automatiques, disponibilite 99.9%.</p>
       </div>
     </div>
-  </footer>
+  </div>
+</section>
 
-</div>
+<!-- ════════════════════════════════════════════════════════════════════════
+     FINAL CTA
+     ════════════════════════════════════════════════════════════════════════ -->
+
+<section id="commencer" class="relative py-24 sm:py-32 px-6 overflow-hidden" data-section="final-cta">
+  <!-- Background orbs -->
+  <div class="orb orb-cta-1" aria-hidden="true"></div>
+  <div class="orb orb-cta-2" aria-hidden="true"></div>
+
+  <div
+    class="relative z-10 max-w-2xl mx-auto text-center section-reveal"
+    class:is-visible={sectionVisible('final-cta')}
+  >
+    <h2 class="font-display text-3xl sm:text-4xl md:text-5xl font-bold text-nuit leading-tight mb-6">
+      Rejoignez les assistantes qui ont dit
+      <span class="text-gradient">adieu au carnet papier</span>
+    </h2>
+    <p class="text-warm-600 text-lg mb-10 max-w-lg mx-auto leading-relaxed">
+      Vous ne vous demanderez plus jamais ce que votre enfant a mange, combien il a dormi, ni comment s'est passee sa journee.
+    </p>
+    <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+      <a href="/onboarding" class="btn btn-primary text-base px-8 py-3.5 rounded-2xl">
+        Creer mon espace
+        <ArrowRight class="w-4 h-4" />
+      </a>
+      <a href="/login" class="btn btn-ghost text-base px-6 py-3.5 rounded-2xl text-sienne-600">
+        J'ai deja un compte
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     FOOTER
+     ════════════════════════════════════════════════════════════════════════ -->
+
+<footer class="border-t border-warm-200/50 py-12 px-6">
+  <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
+    <div class="flex items-center gap-2">
+      <span class="font-display text-xl font-bold text-gradient">Le Cocon</span>
+    </div>
+    <nav class="flex flex-wrap items-center justify-center gap-6 text-sm text-warm-600">
+      <a href="/legal/mentions" class="hover:text-sienne-500 transition-colors">Mentions legales</a>
+      <a href="/legal/confidentialite" class="hover:text-sienne-500 transition-colors">Confidentialite</a>
+      <a href="/legal/cgu" class="hover:text-sienne-500 transition-colors">CGU</a>
+    </nav>
+    <div class="text-sm text-warm-500">
+      &copy; {new Date().getFullYear()} Le Cocon
+    </div>
+  </div>
+</footer>
 
 <style>
-  .landing-nav {
-    background: rgba(255, 248, 240, 0.8);
-    backdrop-filter: blur(20px) saturate(150%);
-    -webkit-backdrop-filter: blur(20px) saturate(150%);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+  /* ════════════════════════════════════════
+     HERO
+     ════════════════════════════════════════ */
+
+  .hero-section {
+    background:
+      radial-gradient(ellipse 90% 70% at 30% 20%, rgba(232, 145, 58, 0.1), transparent 60%),
+      radial-gradient(ellipse 70% 50% at 75% 70%, rgba(194, 101, 58, 0.07), transparent 55%),
+      radial-gradient(ellipse 50% 40% at 50% 50%, rgba(250, 221, 187, 0.12), transparent 50%),
+      linear-gradient(170deg, #FFF8F0 0%, #F5E6D3 35%, #FADCC5 65%, #F0C8A8 100%);
   }
 
+  /* Smooth transition from hero warm tones to page background */
+  .hero-fade {
+    height: 10rem;
+    margin-top: -1px;
+    background: linear-gradient(to bottom, #F0C8A8 0%, #F5E6D3 30%, #FFF8F0 100%);
+  }
+
+  /* Orbs */
   .orb {
-    position: fixed;
+    position: absolute;
     border-radius: 50%;
-    pointer-events: none;
-    z-index: 0;
     filter: blur(80px);
+    pointer-events: none;
+    will-change: transform;
+  }
+  .orb-1 {
+    width: 500px; height: 500px;
+    top: -10%; left: -5%;
+    background: radial-gradient(circle, rgba(232, 145, 58, 0.18) 0%, transparent 70%);
+    animation: orbFloat 18s ease-in-out infinite;
+  }
+  .orb-2 {
+    width: 400px; height: 400px;
+    top: 30%; right: -8%;
+    background: radial-gradient(circle, rgba(194, 101, 58, 0.12) 0%, transparent 70%);
+    animation: orbFloat 22s ease-in-out infinite reverse;
+  }
+  .orb-3 {
+    width: 350px; height: 350px;
+    bottom: 5%; left: 20%;
+    background: radial-gradient(circle, rgba(250, 221, 187, 0.2) 0%, transparent 70%);
+    animation: orbFloat 15s ease-in-out infinite 3s;
+  }
+  .orb-cta-1 {
+    width: 400px; height: 400px;
+    top: -20%; right: -10%;
+    background: radial-gradient(circle, rgba(232, 145, 58, 0.1) 0%, transparent 70%);
     animation: orbFloat 20s ease-in-out infinite;
   }
-
-  @keyframes orbFloat {
-    0%, 100% { transform: translate(0, 0) scale(1); }
-    33% { transform: translate(15px, -20px) scale(1.05); }
-    66% { transform: translate(-10px, 10px) scale(0.97); }
+  .orb-cta-2 {
+    width: 350px; height: 350px;
+    bottom: -15%; left: -5%;
+    background: radial-gradient(circle, rgba(194, 101, 58, 0.08) 0%, transparent 70%);
+    animation: orbFloat 17s ease-in-out infinite reverse;
   }
 
-  .hero-mockup-area {
-    min-height: 420px;
+  /* Golden threads */
+  .threads-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0.6;
+    pointer-events: none;
+  }
+  .thread {
+    stroke-dasharray: 1200;
+    stroke-dashoffset: 1200;
+    animation: drawThread 3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+  .thread-1 { animation-delay: 0.8s; }
+  .thread-2 { animation-delay: 1.3s; }
+  .thread-3 { animation-delay: 1.8s; }
+
+  @keyframes drawThread {
+    to { stroke-dashoffset: 0; }
   }
 
-  .hero-card-main {
-    background: rgba(255, 248, 240, 0.72);
+  /* Hero entrance stagger */
+  .hero-eyebrow,
+  .hero-headline,
+  .hero-sub,
+  .hero-ctas,
+  .hero-scroll {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .hero-eyebrow.hero-visible { opacity: 1; transform: none; transition-delay: 0.15s; }
+  .hero-headline.hero-visible { opacity: 1; transform: none; transition-delay: 0.3s; }
+  .hero-sub.hero-visible { opacity: 1; transform: none; transition-delay: 0.5s; }
+  .hero-ctas.hero-visible { opacity: 1; transform: none; transition-delay: 0.7s; }
+  .hero-scroll.hero-visible { opacity: 1; transform: translate(-50%, 0); transition-delay: 1.1s; }
+
+  .hero-eyebrow {
+    background: rgba(255, 248, 240, 0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+
+  /* Scroll indicator */
+  .scroll-pill {
+    width: 24px;
+    height: 40px;
+    border-radius: 12px;
+    border: 2px solid rgba(184, 158, 134, 0.35);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 6px;
+  }
+  .scroll-dot {
+    width: 4px;
+    height: 8px;
+    border-radius: 2px;
+    background: rgba(232, 145, 58, 0.5);
+    animation: scrollBounce 2s ease-in-out infinite;
+  }
+  @keyframes scrollBounce {
+    0%, 100% { transform: translateY(0); opacity: 1; }
+    50% { transform: translateY(12px); opacity: 0.3; }
+  }
+
+  /* ════════════════════════════════════════
+     SECTION REVEAL
+     ════════════════════════════════════════ */
+
+  .section-reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .section-reveal.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* ════════════════════════════════════════
+     FEATURE CASCADE
+     ════════════════════════════════════════ */
+
+  /* Vertical golden thread */
+  .golden-thread {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    transform: translateX(-50%);
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgba(232, 145, 58, 0.15) 10%,
+      rgba(232, 145, 58, 0.3) 50%,
+      rgba(194, 101, 58, 0.15) 90%,
+      transparent 100%
+    );
+    display: none;
+  }
+  @media (min-width: 1024px) {
+    .golden-thread { display: block; }
+  }
+
+  /* Feature text entrance */
+  .feature-text {
+    opacity: 0;
+    transition: opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .feature-text.from-left { transform: translateX(-40px); }
+  .feature-text.from-right { transform: translateX(40px); }
+  .feature-text.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Feature window entrance */
+  .feature-window {
+    opacity: 0;
+    transform: scale(0.93);
+    border-radius: 1.5rem;
+    transition: opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.12s,
+                transform 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.12s,
+                box-shadow 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .feature-window.is-visible {
+    opacity: 1;
+    transform: none;
+  }
+  @media (min-width: 1024px) {
+    .feature-window.tilt-left.is-visible {
+      transform: perspective(1200px) rotateY(8deg) rotateX(2deg) scale(0.96);
+    }
+    .feature-window.tilt-right.is-visible {
+      transform: perspective(1200px) rotateY(-8deg) rotateX(2deg) scale(0.96);
+    }
+    /* Straighten + lift when user is actively viewing the section */
+    .feature-window.is-focused.is-visible {
+      transform: perspective(1200px) rotateY(0deg) rotateX(0deg) scale(1);
+      box-shadow: 0 32px 80px rgba(194, 101, 58, 0.18),
+                  0 8px 24px rgba(194, 101, 58, 0.08);
+      transition: opacity 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.12s,
+                  transform 1s cubic-bezier(0.34, 1.56, 0.64, 1),
+                  box-shadow 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+  }
+
+  /* App chrome */
+  .app-chrome {
+    border-radius: 1.5rem;
+    overflow: hidden;
+    background: rgba(255, 248, 240, 0.65);
+    backdrop-filter: blur(20px) saturate(150%);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 24px 60px rgba(194, 101, 58, 0.15),
+                0 4px 16px rgba(194, 101, 58, 0.06);
+  }
+
+  .chrome-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255, 240, 220, 0.35);
+    background: rgba(255, 248, 238, 0.45);
+  }
+  .chrome-dots {
+    display: flex;
+    gap: 6px;
+  }
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(184, 158, 134, 0.3);
+  }
+  .dot-miel { background: #E8913A; }
+  .dot-sienne { background: #C2653A; }
+  .dot-mousse { background: #5FA05B; }
+  .chrome-title {
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: var(--color-warm-700);
+    letter-spacing: 0.02em;
+  }
+  .chrome-body {
+    padding: 16px;
+    background: #FFF8F0;
+    min-height: 280px;
+  }
+
+  /* ════════════════════════════════════════
+     MOCKUP INTERNALS
+     ════════════════════════════════════════ */
+
+  .mock-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: white;
+    flex-shrink: 0;
+  }
+  .mock-avatar-e { background: linear-gradient(135deg, #E8913A, #C2653A); }
+  .mock-avatar-t { background: linear-gradient(135deg, #6A96AB, #557A8D); }
+  .mock-avatar-l { background: linear-gradient(135deg, #5FA05B, #4A8747); }
+
+  .mock-name { font-weight: 600; font-size: 0.85rem; color: var(--color-nuit); }
+  .mock-date { font-size: 0.75rem; color: var(--color-warm-500); }
+  .mock-time { font-size: 0.7rem; color: var(--color-warm-500); }
+  .mock-label { font-size: 0.7rem; font-weight: 600; color: var(--color-warm-500); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+  .mock-value { font-size: 0.8rem; color: var(--color-warm-800); line-height: 1.4; }
+
+  /* Journal mockup */
+  .mock-journal .mock-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .mock-mood {
+    margin-left: auto;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: rgba(95, 160, 91, 0.12);
+    color: #4A8747;
+  }
+  .mock-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .mock-card-inner {
+    padding: 10px;
+    border-radius: 12px;
+    background: rgba(255, 248, 238, 0.45);
+    border: 1px solid rgba(255, 240, 220, 0.35);
+  }
+  .mock-plates {
+    display: flex;
+    gap: 3px;
+    margin-top: 6px;
+  }
+  .plate {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(232, 145, 58, 0.3);
+  }
+  .plate-full { background: rgba(232, 145, 58, 0.7); }
+  .plate-half { background: linear-gradient(to top, rgba(232, 145, 58, 0.7) 50%, transparent 50%); }
+  .plate-empty { background: transparent; }
+  .mock-badge {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-top: 6px;
+  }
+  .badge-bleu { background: rgba(106, 150, 171, 0.12); color: #466372; }
+  .badge-mousse { background: rgba(95, 160, 91, 0.12); color: #4A8747; }
+  .badge-sienne { background: rgba(194, 101, 58, 0.12); color: #8f4328; }
+  .badge-soleil { background: rgba(229, 176, 58, 0.15); color: #8e6a10; }
+  .badge-warm { background: rgba(184, 158, 134, 0.15); color: #5E4C3E; }
+
+  .mock-notes { padding-top: 8px; border-top: 1px solid rgba(255, 240, 220, 0.4); }
+  .mock-note-text { font-size: 0.8rem; color: var(--color-warm-700); line-height: 1.5; font-style: italic; }
+
+  /* News mockup */
+  .mock-news { display: flex; flex-direction: column; gap: 14px; }
+  .mock-news-item { display: flex; gap: 10px; }
+  .mock-news-content { flex: 1; min-width: 0; }
+  .mock-news-top { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+  .mock-news-text { font-size: 0.8rem; color: var(--color-warm-700); line-height: 1.45; }
+  .mock-news-img {
+    margin-top: 8px;
+    height: 56px;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  /* Shimmer warm */
+  .shimmer-slot {
+    background: linear-gradient(90deg,
+      rgba(255,248,240,0.8) 25%,
+      rgba(232,145,58,0.15) 50%,
+      rgba(255,248,240,0.8) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer-warm 2s ease-in-out infinite;
+  }
+  @keyframes shimmer-warm {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  /* Notes list mockup */
+  .mock-notes-list { display: flex; flex-direction: column; gap: 10px; }
+  .mock-note-card {
+    padding: 12px;
+    border-radius: 14px;
+    background: rgba(255, 248, 238, 0.45);
+    border: 1px solid rgba(255, 240, 220, 0.35);
+  }
+  .mock-note-badge {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 8px;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .mock-note-title { font-weight: 600; font-size: 0.85rem; color: var(--color-nuit); margin-bottom: 4px; }
+  .mock-note-meta { font-size: 0.7rem; color: var(--color-warm-500); margin-bottom: 8px; }
+  .mock-note-ack {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    color: var(--color-warm-600);
+  }
+  .ack-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .ack-done { background: #5FA05B; }
+  .ack-pending { background: #E5B03A; }
+  .mock-note-response {
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(232, 145, 58, 0.06);
+    border-left: 3px solid rgba(232, 145, 58, 0.3);
+  }
+  .mock-note-response-label { font-size: 0.7rem; font-weight: 600; color: var(--color-miel-600); margin-bottom: 2px; }
+  .mock-note-response-text { font-size: 0.78rem; color: var(--color-warm-700); font-style: italic; line-height: 1.45; }
+
+  /* Menus mockup */
+  .mock-menu-header {
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--color-nuit);
+    margin-bottom: 12px;
+  }
+  .mock-menu-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .mock-menu-day {
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(255, 248, 238, 0.45);
+    border: 1px solid rgba(255, 240, 220, 0.35);
+  }
+  .mock-menu-day-today {
+    border-color: rgba(232, 145, 58, 0.35);
+    background: rgba(232, 145, 58, 0.06);
+  }
+  .mock-menu-day-name {
+    font-weight: 700;
+    font-size: 0.75rem;
+    color: var(--color-warm-600);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+  }
+  .mock-menu-day-today .mock-menu-day-name { color: var(--color-miel-600); }
+  .mock-menu-meal {
+    font-size: 0.78rem;
+    color: var(--color-warm-700);
+    line-height: 1.5;
+    padding-left: 8px;
+  }
+  .mock-meal-type {
+    font-weight: 600;
+    font-size: 0.68rem;
+    color: var(--color-warm-500);
+    margin-right: 4px;
+  }
+
+  /* AI mockup */
+  .mock-ai { display: flex; flex-direction: column; min-height: 260px; }
+  .mock-ai-chat { flex: 1; display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; }
+  .mock-ai-msg { display: flex; gap: 8px; }
+  .mock-ai-user { justify-content: flex-end; }
+  .mock-ai-bot { align-items: flex-start; }
+  .mock-ai-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 10px;
+    background: rgba(232, 145, 58, 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .mock-ai-bubble {
+    padding: 10px 12px;
+    border-radius: 14px;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    max-width: 85%;
+  }
+  .user-bubble {
+    background: rgba(232, 145, 58, 0.1);
+    color: var(--color-warm-800);
+    border-bottom-right-radius: 4px;
+  }
+  .bot-bubble {
+    background: rgba(255, 248, 238, 0.65);
+    border: 1px solid rgba(255, 240, 220, 0.4);
+    color: var(--color-warm-800);
+    border-bottom-left-radius: 4px;
+  }
+  .mock-ai-label { font-weight: 600; font-size: 0.75rem; color: var(--color-miel-600); margin-bottom: 6px; }
+  .mock-ai-result { display: flex; flex-direction: column; gap: 3px; }
+  .mock-ai-line { font-size: 0.76rem; color: var(--color-warm-700); }
+  .mock-ai-key {
+    font-weight: 600;
+    color: var(--color-warm-600);
+    display: inline-block;
+    min-width: 65px;
+    font-size: 0.7rem;
+  }
+  .mock-ai-confirm {
+    margin-top: 8px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #4A8747;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .mock-ai-confirm::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #5FA05B;
+  }
+  .mock-ai-input {
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: rgba(255, 248, 238, 0.45);
+    border: 1px solid rgba(255, 240, 220, 0.35);
+  }
+  .mock-ai-input-placeholder { font-size: 0.78rem; color: var(--color-warm-400); }
+
+  /* Invite mockup */
+  .mock-invite-card { text-align: center; }
+  .mock-invite-child {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    text-align: left;
+  }
+  .mock-invite-code {
+    padding: 16px;
+    border-radius: 16px;
+    background: rgba(255, 248, 238, 0.45);
+    border: 1px solid rgba(255, 240, 220, 0.35);
+    margin-bottom: 14px;
+  }
+  .mock-invite-label { font-size: 0.7rem; font-weight: 600; color: var(--color-warm-500); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+  .mock-invite-value {
+    font-family: 'Fraunces', Georgia, serif;
+    font-weight: 800;
+    font-size: 1.6rem;
+    letter-spacing: 0.08em;
+    color: var(--color-nuit);
+    margin-bottom: 6px;
+  }
+  .mock-invite-expiry { font-size: 0.7rem; color: var(--color-warm-500); }
+  .mock-invite-qr {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .mock-qr-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(255, 248, 238, 0.45);
+    border: 1px solid rgba(255, 240, 220, 0.35);
+  }
+  .mock-qr-row { display: flex; gap: 3px; }
+  .mock-qr-cell {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    background: rgba(184, 158, 134, 0.12);
+  }
+  .mock-qr-cell.filled { background: var(--color-nuit); }
+  .mock-invite-scan { font-size: 0.72rem; color: var(--color-warm-500); }
+
+  /* ════════════════════════════════════════
+     STATS SECTION
+     ════════════════════════════════════════ */
+
+  .stats-section {
+    position: relative;
+  }
+  .stats-bg {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 80% 60% at 30% 0%, rgba(232, 145, 58, 0.15), transparent 60%),
+      radial-gradient(ellipse 60% 50% at 70% 80%, rgba(194, 101, 58, 0.1), transparent 60%),
+      linear-gradient(160deg, #E8913A 0%, #C2653A 60%, #9E4A35 100%);
+    border-radius: 2rem;
+    margin: 0 1rem;
+  }
+  @media (min-width: 640px) {
+    .stats-bg { margin: 0 2rem; border-radius: 2.5rem; }
+  }
+  @media (min-width: 1024px) {
+    .stats-bg { margin: 0 4rem; border-radius: 3rem; }
+  }
+
+  /* ════════════════════════════════════════
+     TRUST CARDS
+     ════════════════════════════════════════ */
+
+  .trust-card {
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+                box-shadow 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .trust-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 16px 48px rgba(194, 101, 58, 0.12);
+  }
+
+  /* ════════════════════════════════════════
+     FEATURE NUM WATERMARK
+     ════════════════════════════════════════ */
+
+  .feature-num {
+    font-variation-settings: 'WONK' 1, 'SOFT' 100;
+  }
+
+  /* ════════════════════════════════════════
+     FLOATING NAV
+     ════════════════════════════════════════ */
+
+  .floating-nav {
+    position: fixed;
+    top: 1rem;
+    left: 50%;
+    transform: translateX(-50%) translateY(-20px);
+    z-index: 50;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .floating-nav.nav-visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+    transition-delay: 0.9s;
+  }
+  .floating-nav-inner {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 0.5rem 0.5rem 1.25rem;
+    border-radius: 1.25rem;
+    background: rgba(255, 248, 240, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    box-shadow: 0 4px 24px rgba(194, 101, 58, 0.08),
+                0 1px 4px rgba(194, 101, 58, 0.04);
+  }
+  /* Apply backdrop-filter only after visible to prevent blur flash on load */
+  .floating-nav.nav-visible .floating-nav-inner {
     backdrop-filter: blur(24px) saturate(150%);
     -webkit-backdrop-filter: blur(24px) saturate(150%);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    box-shadow:
-      0 20px 60px rgba(194, 101, 58, 0.1),
-      0 4px 16px rgba(194, 101, 58, 0.06);
+  }
+  .nav-links {
+    display: none;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  @media (min-width: 640px) {
+    .nav-links { display: flex; }
+    .floating-nav-inner { gap: 1.5rem; }
+  }
+  .nav-link {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--color-warm-600);
+    padding: 0.35rem 0.65rem;
+    border-radius: 0.625rem;
+    transition: color 0.2s, background 0.2s;
+  }
+  .nav-link:hover {
+    color: var(--color-sienne-600);
+    background: rgba(232, 145, 58, 0.08);
   }
 
-  .hero-card-bg {
-    background: rgba(255, 248, 240, 0.35);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    box-shadow: 0 8px 32px rgba(194, 101, 58, 0.06);
-  }
-
-  .hero-badge {
-    background: rgba(255, 248, 240, 0.55);
-    backdrop-filter: blur(16px) saturate(140%);
-    -webkit-backdrop-filter: blur(16px) saturate(140%);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    box-shadow: 0 6px 20px rgba(194, 101, 58, 0.07);
-  }
-
-  .w-13 {
-    width: 3.25rem;
-  }
-  .h-13 {
-    height: 3.25rem;
-  }
+  /* ════════════════════════════════════════
+     REDUCED MOTION
+     ════════════════════════════════════════ */
 
   @media (prefers-reduced-motion: reduce) {
+    .floating-nav {
+      opacity: 1 !important;
+      transform: translateX(-50%) !important;
+      transition: none !important;
+    }
+    .hero-eyebrow,
+    .hero-headline,
+    .hero-sub,
+    .hero-ctas,
+    .hero-scroll {
+      opacity: 1 !important;
+      transform: none !important;
+      transition: none !important;
+    }
+    .feature-text,
+    .feature-window,
+    .section-reveal {
+      opacity: 1 !important;
+      transform: none !important;
+      transition: none !important;
+    }
+    .thread { animation: none !important; stroke-dashoffset: 0 !important; }
     .orb { animation: none !important; }
+    .scroll-dot { animation: none !important; }
+    .shimmer-slot { animation: none !important; }
   }
 </style>
