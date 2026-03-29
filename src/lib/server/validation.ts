@@ -15,7 +15,7 @@ const dateString = z.string().date('Format attendu : YYYY-MM-DD');
 export const loginSchema = z.object({
   email: trimmedString.email('Email invalide').toLowerCase(),
   password: z.string().min(1, 'Mot de passe requis'),
-  redirectUrl: z.string().startsWith('/').default('/app/overview'),
+  redirectUrl: z.string().startsWith('/').refine(s => !s.startsWith('//'), 'Redirection invalide').default('/app/overview'),
 });
 
 export const signupSchema = z.object({
@@ -72,7 +72,10 @@ export const createNoteSchema = z.object({
   content: trimmedString.min(1, 'Contenu requis').max(800),
   startDate: dateString.optional(),
   endDate: dateString.optional(),
-});
+}).refine(
+  d => !d.startDate || !d.endDate || d.startDate <= d.endDate,
+  { message: 'La date de fin doit être après la date de début', path: ['endDate'] }
+);
 
 export const respondToNoteSchema = z.object({
   noteId: uuid,
@@ -94,6 +97,44 @@ export const resendCodeSchema = z.object({
 
 export const inviteCodeSchema = z.object({
   code: z.string().trim().toUpperCase().length(8, 'Le code doit contenir 8 caractères'),
+});
+
+// -- Authorized Persons --
+
+export const createAuthorizedPersonSchema = z.object({
+  childId: uuid,
+  name: trimmedString.min(2, 'Nom trop court').max(100),
+  relationship: trimmedString.min(1, 'Lien requis').max(100),
+  phone: trimmedString.regex(/^[\d\s+()./-]*$/, 'Numéro invalide').max(30).optional(),
+});
+
+// -- Attendance --
+
+export const markArrivalSchema = z.object({
+  childId: uuid,
+  personType: z.enum(['parent', 'authorized_person']),
+  personId: uuid,
+  time: timeString.optional(),
+});
+
+export const markDepartureSchema = z.object({
+  childId: uuid,
+  personType: z.enum(['parent', 'authorized_person']),
+  personId: uuid,
+  time: timeString.optional(),
+});
+
+export const markAbsentSchema = z.object({
+  childId: uuid,
+  status: z.enum(['absent_planned', 'absent_unplanned']),
+  notes: trimmedString.max(500).optional(),
+});
+
+export const editAttendanceSchema = z.object({
+  attendanceId: uuid,
+  arrivalTime: timeString.optional(),
+  departureTime: timeString.optional(),
+  notes: trimmedString.max(500).optional(),
 });
 
 // -- Helpers --

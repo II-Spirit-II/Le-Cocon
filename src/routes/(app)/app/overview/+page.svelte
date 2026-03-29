@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import type { CalendarEvent } from '$lib/domain/parent_notes';
+  import type { CalendarEvent } from '$lib/types';
   import type { MealEntry, NapEntry, HealthEntry, MoodLevel, CareWeekday } from '$lib/types';
   import { browser } from '$app/environment';
   import { agentPanelOpen } from '$lib/stores/agent.svelte';
@@ -10,7 +10,7 @@
     Newspaper, Baby, BookOpen, Sparkles, Inbox,
     Pencil, Smile, Meh, Frown, UtensilsCrossed, CalendarX,
     Calendar, Users, Clock, Heart, Droplets, Thermometer,
-    FileText
+    FileText, UserCheck
   } from 'lucide-svelte';
 
   interface Props { data: PageData; }
@@ -40,6 +40,11 @@
       weekday: 'long', day: 'numeric', month: 'long'
     });
     return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  function formatAttTime(iso: string | null): string {
+    if (!iso) return '';
+    return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
   }
 
   function timeAgo(iso: string) {
@@ -980,7 +985,7 @@
 
                           <!-- Nap + Changes + Health row -->
                           <div class="grid grid-cols-3 gap-2">
-                            <div class="rounded-xl bg-white/30 p-2.5 text-center">
+                            <div class="rounded-xl bg-soie/30 p-2.5 text-center">
                               <div class="flex items-center gap-1 justify-center mb-1">
                                 <Moon size={11} class="text-bleu-400" />
                                 <span class="text-[9px] font-bold text-warm-500 uppercase tracking-wider">Sieste</span>
@@ -993,7 +998,7 @@
                               {/if}
                             </div>
 
-                            <div class="rounded-xl bg-white/30 p-2.5 text-center">
+                            <div class="rounded-xl bg-soie/30 p-2.5 text-center">
                               <div class="flex items-center gap-1 justify-center mb-1">
                                 <Droplets size={11} class="text-bleu-400" />
                                 <span class="text-[9px] font-bold text-warm-500 uppercase tracking-wider">Changes</span>
@@ -1001,7 +1006,7 @@
                               <p class="text-base font-bold text-warm-900 leading-tight">{child.changes}</p>
                             </div>
 
-                            <div class="rounded-xl bg-white/30 p-2.5 text-center">
+                            <div class="rounded-xl bg-soie/30 p-2.5 text-center">
                               {#if child.health && (child.health.temperature || child.health.symptoms || child.health.medication)}
                                 <div class="flex items-center gap-1 justify-center mb-1">
                                   <Thermometer size={11} class="text-argile-400" />
@@ -1265,6 +1270,66 @@
             </a>
           {/if}
         </div>
+
+        <!-- Attendance widget -->
+        {#if data.attendance && (data.attendance.presentCount > 0 || data.attendance.absentCount > 0 || data.attendance.notArrivedCount > 0)}
+          <a href="/app/attendance"
+            class="mt-4 block p-4 rounded-2xl glass-2 hover:bg-warm-100/30 transition-colors group">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2">
+                <UserCheck size={15} class="text-mousse-500" />
+                <span class="text-sm font-semibold text-warm-800">Présences du jour</span>
+              </div>
+              <ChevronRight size={13} class="text-warm-400 group-hover:translate-x-0.5 transition-transform" />
+            </div>
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs mb-2">
+              {#if data.attendance.presentCount > 0}
+                <span class="flex items-center gap-1 text-mousse-600">
+                  <span class="w-1.5 h-1.5 rounded-full bg-mousse-400"></span>
+                  {data.attendance.presentCount} présent{data.attendance.presentCount > 1 ? 's' : ''}
+                </span>
+              {/if}
+              {#if data.attendance.departedCount > 0}
+                <span class="flex items-center gap-1 text-bleu-500">
+                  <span class="w-1.5 h-1.5 rounded-full bg-bleu-400"></span>
+                  {data.attendance.departedCount} parti{data.attendance.departedCount > 1 ? 's' : ''}
+                </span>
+              {/if}
+              {#if data.attendance.absentCount > 0}
+                <span class="flex items-center gap-1 text-argile-500">
+                  <span class="w-1.5 h-1.5 rounded-full bg-argile-400"></span>
+                  {data.attendance.absentCount} absent{data.attendance.absentCount > 1 ? 's' : ''}
+                </span>
+              {/if}
+              {#if data.attendance.notArrivedCount > 0}
+                <span class="flex items-center gap-1 text-warm-500">
+                  <span class="w-1.5 h-1.5 rounded-full bg-warm-300"></span>
+                  {data.attendance.notArrivedCount} attendu{data.attendance.notArrivedCount > 1 ? 's' : ''}
+                </span>
+              {/if}
+            </div>
+            {#if data.attendance.summary.length > 0}
+              <p class="text-xs text-warm-500 truncate">
+                {data.attendance.summary.map(s => `${s.firstName} (${formatAttTime(s.arrivalTime)})`).join(' · ')}
+              </p>
+            {/if}
+          </a>
+        {/if}
+
+        <!-- Late alert: children still present after 18h -->
+        {#if currentHour >= 18 && data.attendance && data.attendance.stillPresentCount > 0}
+          <div class="mt-3 flex items-center gap-3 px-4 py-3 rounded-2xl bg-sienne-400/10 ring-1 ring-sienne-400/25">
+            <div class="w-9 h-9 rounded-xl bg-sienne-400/20 flex items-center justify-center shrink-0">
+              <Clock size={18} class="text-sienne-600" />
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-semibold text-sienne-700">
+                {data.attendance.stillPresentCount} enfant{data.attendance.stillPresentCount > 1 ? 's' : ''} encore présent{data.attendance.stillPresentCount > 1 ? 's' : ''}
+              </p>
+              <p class="text-xs text-sienne-600/70">Pensez à pointer les départs</p>
+            </div>
+          </div>
+        {/if}
 
         <!-- Menu callout (not defined) -->
         {#if !data.hasTodayMenu}

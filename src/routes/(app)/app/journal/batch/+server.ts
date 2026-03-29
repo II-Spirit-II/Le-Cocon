@@ -10,7 +10,10 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { chatCompletion, isAIEnabled, OllamaError } from '$lib/server/ai/ollama';
+import { createRateLimiter } from '$lib/server/helpers';
 import type { MealEntry, NapEntry, MoodLevel } from '$lib/types';
+
+const rateLimitBatch = createRateLimiter(10, 60_000);
 
 interface BatchChild {
   childId:   string;
@@ -182,6 +185,10 @@ function parseResponse(raw: string, children: BatchChild[]): Record<string, stri
 export const POST: RequestHandler = async ({ request, locals }) => {
   if (!locals.user) throw error(401, 'Non authentifié');
   if (locals.user.role !== 'assistante') throw error(403, 'Accès réservé aux assistantes');
+
+  if (!rateLimitBatch(locals.user.id)) {
+    return json({ success: false, error: 'Trop de requêtes. Réessayez dans une minute.' }, { status: 429 });
+  }
 
   if (!isAIEnabled()) {
     return json({ success: false, error: "L'assistant IA est désactivé (AI_PROVIDER=off)." }, { status: 503 });

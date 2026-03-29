@@ -16,7 +16,10 @@
     MessageSquare,
     LogOut,
     Home,
-    ChevronsLeft
+    ChevronsLeft,
+    UserCheck,
+    QrCode,
+    ScanLine
   } from 'lucide-svelte';
 
   // View Transitions API — GPU-accelerated page transitions
@@ -80,10 +83,12 @@
     const items: NavItem[] = [
       { href: '/app/overview', label: 'Vue d\'ensemble', Icon: Home     },
       { href: '/app/children', label: 'Carnet de suivi', Icon: BookOpen },
+      { href: '/app/attendance', label: 'Présences', Icon: UserCheck },
       { href: '/app/feed',     label: 'News',           Icon: Newspaper },
     ];
 
     if (data.user?.role === 'assistante') {
+      items.push({ href: '/app/scan', label: 'Scanner QR', Icon: ScanLine });
       items.push({
         href: '/app/inbox',
         label: 'Boîte de réception',
@@ -92,6 +97,7 @@
       });
       items.push({ href: '/app/stats', label: 'Statistiques', Icon: BarChart3 });
     } else if (data.user?.role === 'parent') {
+      items.push({ href: '/app/my-qr', label: 'Mon QR', Icon: QrCode });
       items.push({
         href: '/app/notes',
         label: "Notes à l'assmat",
@@ -110,6 +116,9 @@
   const iconColors: Record<string, string> = {
     '/app/overview':  'text-miel-500',
     '/app/children':  'text-bleu-400',
+    '/app/attendance': 'text-mousse-400',
+    '/app/scan':      'text-miel-500',
+    '/app/my-qr':     'text-miel-500',
     '/app/feed':      'text-sienne-500',
     '/app/inbox':     'text-sable-400',
     '/app/stats':     'text-mousse-400',

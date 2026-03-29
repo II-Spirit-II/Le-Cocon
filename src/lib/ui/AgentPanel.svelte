@@ -7,7 +7,7 @@
   import { agentPanelOpen } from '$lib/stores/agent.svelte';
   import { isAssistante, currentUser } from '$lib/stores/auth';
   import PlateVisual from './PlateVisual.svelte';
-  import type { ActionResult } from '$lib/server/ai/actions';
+  import type { ActionResult } from '$lib/types';
   import type { MealLevel, MoodLevel } from '$lib/types';
 
   // ── Types locaux ────────────────────────────────────────────────────────

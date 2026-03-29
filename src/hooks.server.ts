@@ -51,12 +51,13 @@ export const handle: Handle = async ({ event, resolve }) => {
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // camera must stay unrestricted — iOS Safari rejects camera=(self) and blocks getUserMedia entirely
+  response.headers.set('Permissions-Policy', 'microphone=(), geolocation=()');
 
   // CSP is handled by SvelteKit via svelte.config.js (auto nonce injection for inline scripts)
   // Only set fallback CSP if SvelteKit didn't generate one (e.g. prerendered pages)
   if (!response.headers.has('content-security-policy')) {
-    response.headers.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://s3.fr-par.scw.cloud https://api.dicebear.com; connect-src 'self' https://api.scaleway.ai https://api.scaleway.com; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+    response.headers.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://s3.fr-par.scw.cloud https://api.dicebear.com; connect-src 'self' https://api.scaleway.ai https://api.scaleway.com; worker-src 'self' blob:; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
   }
 
   return response;

@@ -1,12 +1,12 @@
 import type { DrizzleDB } from '$lib/server/db';
-import type { MealEntry, NapEntry, MoodLevel, HealthEntry, MealLevel, MealType } from '$lib/types';
+import type { MealEntry, NapEntry, MoodLevel, HealthEntry, MealLevel, MealType, ActionType, ActionResult } from '$lib/types';
 import { createNews } from '$lib/domain/news';
 import { createDailyLog, getDailyLogByDate, updateDailyLog } from '$lib/domain/daily_logs';
 import { chatCompletion } from './ollama';
 
-// ── Types ──────────────────────────────────────────────────────────────────
+export type { ActionType, ActionResult };
 
-export type ActionType = 'create_journal' | 'create_news';
+// ── Types ──────────────────────────────────────────────────────────────────
 
 export type UnifiedIntent = 'action' | 'query' | 'chat';
 
@@ -15,6 +15,8 @@ export type QueryType =
   | 'nap_recent'
   | 'health_last'
   | 'absences'
+  | 'presence_today'
+  | 'hours_child'
   | 'recap_week'
   | 'news_recent'
   | 'general';
@@ -26,14 +28,6 @@ export interface ClassificationResult {
   childName?: string;
   confidence: number;
   reasoning: string;
-}
-
-export interface ActionResult {
-  type: ActionType;
-  success: boolean;
-  message: string;
-  resourcePath?: string;
-  resourceLabel?: string;
 }
 
 export type NapQuality = NapEntry['quality'] | 'none';
@@ -93,6 +87,8 @@ Il y a 3 types d'intention :
    - nap_recent : questions sur le sommeil/siestes ("il dort bien ?", "ses siestes ?")
    - health_last : questions sur la santé ("il a été malade ?", "sa température ?")
    - absences : questions sur les absences ("il était là ?", "absent quand ?")
+   - presence_today : questions sur les présences du jour ("qui est là ?", "combien d'enfants aujourd'hui ?", "qui est présent ?")
+   - hours_child : questions sur les heures de garde d'un enfant ("heures de Léa", "combien d'heures ce mois ?", "rapport horaire")
    - recap_week : demande de bilan/résumé ("résumé de la semaine", "comment ça s'est passé ?")
    - news_recent : consulter les news existantes ("quelles news ?", "quoi de neuf ?")
    - general : toute autre question factuelle
@@ -132,6 +128,12 @@ Message: "Il a dormi 2h"
 
 Message: "Il dort bien en général ?"
 → query nap_recent (question)
+
+Message: "Qui est là aujourd'hui ?"
+→ query presence_today (question sur les présences)
+
+Message: "Combien d'heures a fait Léa ce mois-ci ?"
+→ query hours_child (question sur les heures, child_name: "Léa")
 
 Message: "fais-le" (après un contexte de conversation)
 → Regarde l'historique et la page pour déterminer l'action

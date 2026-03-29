@@ -1,5 +1,5 @@
 import { env } from '$env/dynamic/private';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and, isNull, gte } from 'drizzle-orm';
 import { createHash } from 'crypto';
 import { getDb } from './db';
 import type { DrizzleDB } from './db';
@@ -236,6 +236,7 @@ export async function isSessionValid(db: DrizzleDB, token: string): Promise<bool
       .where(and(
         eq(sessions.tokenHash, hashToken(token)),
         isNull(sessions.revokedAt),
+        gte(sessions.expiresAt, new Date()),
       ))
       .limit(1);
     return !!row;

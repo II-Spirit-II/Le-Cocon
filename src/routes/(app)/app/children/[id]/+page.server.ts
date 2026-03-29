@@ -10,8 +10,9 @@ import { getNewsForChild } from '$lib/domain/news';
 import { getCalendarInsights, countUnacknowledgedNotes } from '$lib/domain/parent_notes';
 import { uploadChildAvatar, getAvatarPublicUrl } from '$lib/server/storage';
 import { getChildAvatarUrl } from '$lib/utils/avatar';
+import { getAuthorizedPersons, createAuthorizedPerson, deactivateAuthorizedPerson } from '$lib/domain/authorized_persons';
 import { requireAuth, requireRole, assertChildAccess, toLocalDateStr } from '$lib/server/helpers';
-import { careScheduleSchema } from '$lib/server/validation';
+import { careScheduleSchema, createAuthorizedPersonSchema, parseFormData } from '$lib/server/validation';
 import type { CareSchedule } from '$lib/types';
 
 /** Monday of the week containing `date` (ISO string YYYY-MM-DD). */
@@ -48,10 +49,11 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
       : getWeekStart(today);
     const weekEnd = addDays(weekStart, 6);
 
-    const [weekLogs, recentNews, insights] = await Promise.all([
+    const [weekLogs, recentNews, insights, authorizedPersons] = await Promise.all([
       getDailyLogsForChild(locals.db, params.id, { startDate: weekStart, endDate: weekEnd }),
       getNewsForChild(locals.db, params.id, 5),
-      getCalendarInsights(locals.db, params.id)
+      getCalendarInsights(locals.db, params.id),
+      getAuthorizedPersons(locals.db, params.id)
     ]);
 
     const avatarUrl = child.avatarPath
@@ -64,6 +66,7 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
       recentLogs: weekLogs,
       recentNews,
       insights,
+      authorizedPersons,
       today,
       weekStart,
       weekEnd,
@@ -81,12 +84,13 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
     : getWeekStart(today);
   const weekEndA = addDays(weekStartA, 6);
 
-  const [inviteCodes, weekLogs, recentNews, insights, pendingNotesCount] = await Promise.all([
+  const [inviteCodes, weekLogs, recentNews, insights, pendingNotesCount, authorizedPersons] = await Promise.all([
     getInviteCodesForChild(locals.db, params.id),
     getDailyLogsForChild(locals.db, params.id, { startDate: weekStartA, endDate: weekEndA }),
     getNewsForChild(locals.db, params.id, 5),
     getCalendarInsights(locals.db, params.id),
-    countUnacknowledgedNotes(locals.db, locals.user.id, params.id)
+    countUnacknowledgedNotes(locals.db, locals.user.id, params.id),
+    getAuthorizedPersons(locals.db, params.id)
   ]);
 
   const avatarUrl = child.avatarPath
@@ -100,6 +104,7 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
     recentLogs: weekLogs,
     recentNews,
     insights,
+    authorizedPersons,
     pendingNotesCount,
     today,
     weekStart: weekStartA,
@@ -194,5 +199,43 @@ export const actions: Actions = {
     if (!ok) return fail(500, { error: 'Erreur lors de la sauvegarde' });
 
     return { scheduleUpdated: true };
+  },
+
+  addAuthorizedPerson: async ({ request, params, locals }) => {
+    requireAuth(locals.user);
+
+    const child = await getChildById(locals.db, params.id);
+    assertChildAccess(child, locals.user);
+
+    const formData = await request.formData();
+    const v = parseFormData(createAuthorizedPersonSchema, formData);
+    if (!v.ok) return fail(400, { error: v.error });
+
+    const person = await createAuthorizedPerson(locals.db, {
+      childId: params.id,
+      name: v.data.name,
+      relationship: v.data.relationship,
+      phone: v.data.phone,
+      createdById: locals.user.id,
+    });
+
+    if (!person) return fail(500, { error: "Erreur lors de l'ajout" });
+    return { success: true, personAdded: true };
+  },
+
+  removeAuthorizedPerson: async ({ request, params, locals }) => {
+    requireAuth(locals.user);
+
+    const child = await getChildById(locals.db, params.id);
+    assertChildAccess(child, locals.user);
+
+    const formData = await request.formData();
+    const personId = formData.get('personId')?.toString();
+    if (!personId) return fail(400, { error: 'ID manquant' });
+
+    const ok = await deactivateAuthorizedPerson(locals.db, personId, params.id);
+    if (!ok) return fail(404, { error: 'Personne introuvable ou déjà supprimée' });
+
+    return { success: true, personRemoved: true };
   }
 };

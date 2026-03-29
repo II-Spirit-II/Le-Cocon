@@ -14,8 +14,9 @@ import {
 import { chatCompletion, isAIEnabled } from '$lib/server/ai/ollama';
 import { getMenusForDate } from '$lib/domain/menus';
 import { createNews } from '$lib/domain/news';
-import { getChildrenForUser } from '$lib/domain/children';
-import { createRateLimiter } from '$lib/server/helpers';
+import { getChildrenForUser, getChildById } from '$lib/domain/children';
+import { getAttendancesByDate, getMonthlyReport } from '$lib/domain/attendance';
+import { createRateLimiter, assertChildAccess } from '$lib/server/helpers';
 import type { MoodLevel, MealLevel, MealType } from '$lib/types';
 
 interface ChildOption {
@@ -119,6 +120,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
   // ── Direct form submissions (journal/news) — bypass classification ────
   if (journalData && role === 'assistante') {
+    // Verify the assistante manages this child before writing
+    const jChild = await getChildById(db, journalData.childId);
+    assertChildAccess(jChild, user);
     const result = await createJournalFromFormData(db, journalData, user.id, napDefaults);
     return json({ reply: result.message, action: result });
   }
@@ -126,6 +130,9 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   const rawNd = body.newsData as Record<string, unknown> | undefined;
   if (rawNd && typeof rawNd.childId === 'string' && role === 'assistante') {
     const newsChildId = rawNd.childId;
+    // Verify the assistante manages this child before writing
+    const nChild = await getChildById(db, newsChildId);
+    assertChildAccess(nChild, user);
     const newsContent = String(rawNd.content ?? '').trim().slice(0, 200);
     if (!newsContent) return json({ reply: 'Le contenu de la news est vide.' });
     const newsItem = await createNews(db, { childId: newsChildId, content: newsContent, emoji: undefined }, user.id);
@@ -175,13 +182,16 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     }
   }
 
-  // 3. Fallback: child ID from current page URL
+  // 3. Fallback: child ID from current page URL — verify it belongs to the user's children
   if (!targetChildId) {
-    targetChildId = childIdFromPath(contextPath);
+    const pathChildId = childIdFromPath(contextPath);
+    if (pathChildId && childrenList.some(c => c.id === pathChildId)) {
+      targetChildId = pathChildId;
+    }
   }
 
   const targetChild = childrenList.find(c => c.id === targetChildId);
-  const targetChildName = targetChild
+  let targetChildName = targetChild
     ? `${targetChild.first_name} ${targetChild.last_name}`
     : '';
 
@@ -209,6 +219,69 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     }
 
     return handleAction(classification.action, targetChildId, targetChildName, childOptions, message, db, user.id, napDefaults);
+  }
+
+  // QUERY intent — special handlers for attendance queries
+  if (classification.intent === 'query' && classification.queryType === 'presence_today') {
+    if (role !== 'assistante') {
+      return json({ reply: "Les informations de présence ne sont disponibles que pour les assistantes maternelles." });
+    }
+    const today = new Date().toLocaleDateString('fr-CA', { timeZone: 'Europe/Paris' });
+    const attendances = await getAttendancesByDate(db, user.id, today);
+
+    const present = attendances.filter(a => a.id && a.arrivalTime && !a.departureTime && a.status === 'present');
+    const departed = attendances.filter(a => a.id && a.arrivalTime && a.departureTime && a.status === 'present');
+    const absent = attendances.filter(a => a.id && (a.status === 'absent_planned' || a.status === 'absent_unplanned'));
+    const notArrived = attendances.filter(a => !a.id && a.expectedStart);
+
+    const parts: string[] = [];
+    if (present.length > 0) {
+      const names = present.map(a => {
+        const t = a.arrivalTime ? new Date(a.arrivalTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }) : '';
+        return `${a.childFirstName} (arrivée ${t})`;
+      }).join(', ');
+      parts.push(`${present.length} enfant${present.length > 1 ? 's' : ''} présent${present.length > 1 ? 's' : ''} : ${names}.`);
+    }
+    if (departed.length > 0) {
+      parts.push(`${departed.length} déjà parti${departed.length > 1 ? 's' : ''} : ${departed.map(a => a.childFirstName).join(', ')}.`);
+    }
+    if (absent.length > 0) {
+      parts.push(`${absent.length} absent${absent.length > 1 ? 's' : ''} : ${absent.map(a => a.childFirstName).join(', ')}.`);
+    }
+    if (notArrived.length > 0) {
+      parts.push(`${notArrived.length} attendu${notArrived.length > 1 ? 's' : ''} (pas encore arrivé${notArrived.length > 1 ? 's' : ''}) : ${notArrived.map(a => a.childFirstName).join(', ')}.`);
+    }
+    if (parts.length === 0) parts.push("Aucune donnée de présence pour aujourd'hui.");
+
+    return json({ reply: `Aujourd'hui : ${parts.join(' ')}` });
+  }
+
+  if (classification.intent === 'query' && classification.queryType === 'hours_child') {
+    if (!targetChildId) {
+      if (childrenList.length === 1) {
+        targetChildId = childrenList[0].id;
+        targetChildName = childrenList[0].first_name;
+      } else {
+        const names = childrenList.map(c => c.first_name).join(', ');
+        return json({ reply: `De quel enfant souhaitez-vous voir les heures ? (${names})` });
+      }
+    }
+
+    const now = new Date();
+    const report = await getMonthlyReport(db, user.id, now.getFullYear(), now.getMonth());
+    const childReport = report.find(r => r.childId === targetChildId);
+
+    if (!childReport) {
+      return json({ reply: `Je n'ai pas trouvé de données d'heures pour ${targetChildName || 'cet enfant'} ce mois-ci.` });
+    }
+
+    const monthName = now.toLocaleDateString('fr-FR', { month: 'long' });
+    const fmtH = (h: number) => { const hrs = Math.floor(h); const mins = Math.round((h - hrs) * 60); return `${hrs}h${mins.toString().padStart(2, '0')}`; };
+    const deltaSign = childReport.deltaHours >= 0 ? '+' : '';
+
+    return json({
+      reply: `En ${monthName}, ${childReport.childFirstName} a fait ${fmtH(childReport.actualHours)} sur ${fmtH(childReport.expectedHours)} prévues (${deltaSign}${fmtH(childReport.deltaHours)}). ${childReport.daysPresent} jour${childReport.daysPresent > 1 ? 's' : ''} de présence${childReport.daysAbsentPlanned > 0 ? `, ${childReport.daysAbsentPlanned} absence${childReport.daysAbsentPlanned > 1 ? 's' : ''} prévue${childReport.daysAbsentPlanned > 1 ? 's' : ''}` : ''}${childReport.daysAbsentUnplanned > 0 ? `, ${childReport.daysAbsentUnplanned} absence${childReport.daysAbsentUnplanned > 1 ? 's' : ''} imprévue${childReport.daysAbsentUnplanned > 1 ? 's' : ''}` : ''} sur ${childReport.daysExpected} jours attendus.`
+    });
   }
 
   // QUERY intent → pipeline RAG

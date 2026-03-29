@@ -3,6 +3,7 @@ import { getAllDailyLogs } from '$lib/domain/daily_logs';
 import { getMenusForDate } from '$lib/domain/menus';
 import { listCalendarEventsForAssistant, listCalendarEventsForParent, countUnacknowledgedNotes, countUnseenResponses } from '$lib/domain/parent_notes';
 import { getNewsForChildren } from '$lib/domain/news';
+import { getAttendancesByDate } from '$lib/domain/attendance';
 import { requireAuth, toLocalDateStr } from '$lib/server/helpers';
 import { getAvatarPublicUrl } from '$lib/server/storage';
 import { getChildAvatarUrl } from '$lib/utils/avatar';
@@ -30,7 +31,7 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
   const { children } = await parent();
   const childIds = children.map((c) => c.id);
 
-  const [todayLogs, todayMenus, pendingCount, todayAbsences, rawNews, calendarEvents] = await Promise.all([
+  const [todayLogs, todayMenus, pendingCount, todayAbsences, rawNews, calendarEvents, attendancesToday] = await Promise.all([
     getAllDailyLogs(db, { childIds, startDate: today, endDate: today }),
     getMenusForDate(db, today),
     role === 'assistante'
@@ -42,7 +43,10 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
     getNewsForChildren(db, childIds, 6),
     role === 'assistante'
       ? listCalendarEventsForAssistant(db, { from: monthFrom, to: monthTo })
-      : listCalendarEventsForParent(db, user.id, { from: monthFrom, to: monthTo })
+      : listCalendarEventsForParent(db, user.id, { from: monthFrom, to: monthTo }),
+    role === 'assistante'
+      ? getAttendancesByDate(db, user.id, today)
+      : Promise.resolve([])
   ]);
 
   const absentChildIds = new Set(todayAbsences.map((a) => a.childId));
@@ -67,7 +71,7 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
       health: (log?.health ?? null) as HealthEntry | null,
       changes: log?.changes ?? 0,
       notes: log?.notes ?? '',
-      careSchedule: child.careSchedule ?? {} as CareSchedule,
+      careSchedule: (child.careSchedule ?? {}) as CareSchedule,
     };
   }));
 
@@ -89,6 +93,17 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
     createdAt: n.createdAt
   }));
 
+  // Attendance summary for dashboard widget
+  const attPresent = attendancesToday.filter(a => a.id && a.arrivalTime && !a.departureTime && a.status === 'present');
+  const attDeparted = attendancesToday.filter(a => a.id && a.arrivalTime && a.departureTime && a.status === 'present');
+  const attAbsent = attendancesToday.filter(a => a.id && (a.status === 'absent_planned' || a.status === 'absent_unplanned'));
+  const attNotArrived = attendancesToday.filter(a => !a.id && a.expectedStart);
+
+  const attendanceSummary = attPresent.slice(0, 4).map(a => ({
+    firstName: a.childFirstName,
+    arrivalTime: a.arrivalTime,
+  }));
+
   return {
     firstName: user.name.split(' ')[0],
     today,
@@ -104,6 +119,14 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
     recentNews,
     calendarYear: now.getFullYear(),
     calendarMonth: now.getMonth(),
-    calendarEvents
+    calendarEvents,
+    attendance: {
+      presentCount: attPresent.length,
+      departedCount: attDeparted.length,
+      absentCount: attAbsent.length,
+      notArrivedCount: attNotArrived.length,
+      summary: attendanceSummary,
+      stillPresentCount: attPresent.length,
+    }
   };
 };

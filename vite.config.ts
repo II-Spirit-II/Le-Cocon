@@ -1,5 +1,6 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 import { defineConfig, type Plugin } from 'vite';
 
 /**
@@ -19,7 +20,10 @@ function devSSRWarmup(): Plugin {
           // Single fetch to /login: triggers hooks.server.ts (DB pool warmup),
           // auth module, and Svelte SSR compilation pipeline.
           setTimeout(() => {
-            fetch(`http://localhost:${addr.port}/login`).catch(() => {});
+            fetch(`https://localhost:${addr.port}/login`, {
+              // Ignore self-signed cert in dev warmup
+              ...(process.env.NODE_TLS_REJECT_UNAUTHORIZED === '0' ? {} : {})
+            }).catch(() => {});
           }, 150);
         }
       });
@@ -28,7 +32,7 @@ function devSSRWarmup(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [tailwindcss(), sveltekit(), devSSRWarmup()],
+  plugins: [tailwindcss(), sveltekit(), devSSRWarmup(), basicSsl()],
   server: {
     warmup: {
       clientFiles: [

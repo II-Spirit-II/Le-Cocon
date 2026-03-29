@@ -186,19 +186,21 @@
   <meta name="description" content="Le Cocon remplace le carnet papier par un espace numerique chaleureux entre assistantes maternelles et parents. Journal, actualites, menus, notes — tout en temps reel." />
 </svelte:head>
 
+<div class="landing-page">
+
 <!-- ════════════════════════════════════════════════════════════════════════
      FLOATING NAV
      ════════════════════════════════════════════════════════════════════════ -->
 
 <nav class="floating-nav" class:nav-visible={heroReady}>
   <div class="floating-nav-inner">
-    <a href="/" class="font-display text-lg font-bold text-gradient shrink-0">Le Cocon</a>
+    <a href="/" class="font-display text-base sm:text-lg font-bold text-gradient shrink-0">Le Cocon</a>
     <div class="nav-links">
       <a href="#features" class="nav-link">Fonctionnalites</a>
       <a href="#confiance" class="nav-link">Confiance</a>
-      <a href="#commencer" class="nav-link">Commencer</a>
+      <a href="#commencer" class="nav-link nav-link-desktop">Commencer</a>
     </div>
-    <a href="/login" class="btn btn-primary text-sm px-5 py-2 rounded-xl shrink-0">
+    <a href="/login" class="btn btn-primary text-xs sm:text-sm px-3 sm:px-5 py-1.5 sm:py-2 rounded-xl shrink-0">
       Connexion
     </a>
   </div>
@@ -280,7 +282,7 @@
 
   <!-- Scroll indicator -->
   <div
-    class="hero-scroll absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2"
+    class="hero-scroll flex flex-col items-center gap-2"
     class:hero-visible={heroReady}
   >
     <span class="text-xs text-warm-500 tracking-widest uppercase">Decouvrir</span>
@@ -750,7 +752,12 @@
   </div>
 </footer>
 
+</div><!-- .landing-page -->
+
 <style>
+  .landing-page {
+    overflow-x: hidden;
+  }
   /* ════════════════════════════════════════
      HERO
      ════════════════════════════════════════ */
@@ -835,8 +842,7 @@
   .hero-eyebrow,
   .hero-headline,
   .hero-sub,
-  .hero-ctas,
-  .hero-scroll {
+  .hero-ctas {
     opacity: 0;
     transform: translateY(24px);
     transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
@@ -846,7 +852,17 @@
   .hero-headline.hero-visible { opacity: 1; transform: none; transition-delay: 0.3s; }
   .hero-sub.hero-visible { opacity: 1; transform: none; transition-delay: 0.5s; }
   .hero-ctas.hero-visible { opacity: 1; transform: none; transition-delay: 0.7s; }
-  .hero-scroll.hero-visible { opacity: 1; transform: translate(-50%, 0); transition-delay: 1.1s; }
+
+  .hero-scroll {
+    position: absolute;
+    bottom: 2rem;
+    left: 50%;
+    opacity: 0;
+    transform: translateX(-50%) translateY(24px);
+    transition: opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .hero-scroll.hero-visible { opacity: 1; transform: translateX(-50%) translateY(0); transition-delay: 1.1s; }
 
   .hero-eyebrow {
     background: rgba(255, 248, 240, 0.6);
@@ -1380,12 +1396,14 @@
 
   .floating-nav {
     position: fixed;
-    top: 1rem;
+    top: 0.75rem;
     left: 50%;
     transform: translateX(-50%) translateY(-20px);
     z-index: 50;
     opacity: 0;
     pointer-events: none;
+    width: calc(100% - 1.5rem);
+    max-width: 42rem;
     transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
                 transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
   }
@@ -1398,13 +1416,18 @@
   .floating-nav-inner {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    padding: 0.5rem 0.5rem 0.5rem 1.25rem;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.4rem 0.4rem 0.4rem 1rem;
     border-radius: 1.25rem;
     background: rgba(255, 248, 240, 0.7);
     border: 1px solid rgba(255, 255, 255, 0.35);
     box-shadow: 0 4px 24px rgba(194, 101, 58, 0.08),
                 0 1px 4px rgba(194, 101, 58, 0.04);
+  }
+  @media (min-width: 640px) {
+    .floating-nav { top: 1rem; width: auto; max-width: none; }
+    .floating-nav-inner { padding: 0.5rem 0.5rem 0.5rem 1.25rem; gap: 1rem; justify-content: center; }
   }
   /* Apply backdrop-filter only after visible to prevent blur flash on load */
   .floating-nav.nav-visible .floating-nav-inner {
@@ -1412,25 +1435,29 @@
     -webkit-backdrop-filter: blur(24px) saturate(150%);
   }
   .nav-links {
-    display: none;
+    display: flex;
     align-items: center;
-    gap: 0.25rem;
-  }
-  @media (min-width: 640px) {
-    .nav-links { display: flex; }
-    .floating-nav-inner { gap: 1.5rem; }
+    gap: 0.1rem;
   }
   .nav-link {
-    font-size: 0.8rem;
+    font-size: 0.7rem;
     font-weight: 500;
     color: var(--color-warm-600);
-    padding: 0.35rem 0.65rem;
+    padding: 0.3rem 0.4rem;
     border-radius: 0.625rem;
     transition: color 0.2s, background 0.2s;
+    white-space: nowrap;
   }
   .nav-link:hover {
     color: var(--color-sienne-600);
     background: rgba(232, 145, 58, 0.08);
+  }
+  /* "Commencer" hidden on mobile — redundant with hero CTAs */
+  .nav-link-desktop { display: none; }
+  @media (min-width: 640px) {
+    .nav-links { gap: 0.25rem; }
+    .nav-link { font-size: 0.8rem; padding: 0.35rem 0.65rem; }
+    .nav-link-desktop { display: inline; }
   }
 
   /* ════════════════════════════════════════
@@ -1449,7 +1476,7 @@
     .hero-ctas,
     .hero-scroll {
       opacity: 1 !important;
-      transform: none !important;
+      transform: translateX(-50%) !important;
       transition: none !important;
     }
     .feature-text,

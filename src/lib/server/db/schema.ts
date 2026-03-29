@@ -25,6 +25,9 @@ export const mealTypeEnum = pgEnum('meal_type', ['petit-dejeuner', 'dejeuner', '
 export const parentNoteKindEnum = pgEnum('parent_note_kind', [
   'absence', 'retard', 'sante', 'logistique', 'autre'
 ]);
+export const attendanceStatusEnum = pgEnum('attendance_status', ['present', 'absent_planned', 'absent_unplanned']);
+export const checkMethodEnum = pgEnum('check_method', ['qr', 'manual']);
+export const personTypeEnum = pgEnum('person_type', ['parent', 'authorized_person']);
 
 // ── Users (auth) ─────────────────────────────────────────────────────────────
 
@@ -204,4 +207,47 @@ export const inviteCodes = pgTable('invite_codes', {
 }, (table) => [
   index('invite_codes_child_idx').on(table.childId),
   index('invite_codes_expires_idx').on(table.expiresAt),
+]);
+
+// ── Authorized Persons ──────────────────────────────────────────────────────
+
+export const authorizedPersons = pgTable('authorized_persons', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  childId: uuid('child_id').notNull().references(() => children.id, { onDelete: 'cascade' }),
+  name: varchar('name', { length: 255 }).notNull(),
+  relationship: varchar('relationship', { length: 100 }).notNull(),
+  phone: varchar('phone', { length: 30 }),
+  photoPath: varchar('photo_path', { length: 500 }),
+  createdById: uuid('created_by_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  active: boolean('active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  index('authorized_persons_child_idx').on(table.childId),
+]);
+
+// ── Attendances ─────────────────────────────────────────────────────────────
+
+export const attendances = pgTable('attendances', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  childId: uuid('child_id').notNull().references(() => children.id, { onDelete: 'cascade' }),
+  date: date('date').notNull(),
+  status: attendanceStatusEnum('status').notNull().default('present'),
+  arrivalTime: timestamp('arrival_time', { withTimezone: true }),
+  arrivalPersonType: personTypeEnum('arrival_person_type'),
+  arrivalPersonId: uuid('arrival_person_id'),
+  arrivalMethod: checkMethodEnum('arrival_method'),
+  arrivalScannedBy: uuid('arrival_scanned_by').references(() => users.id, { onDelete: 'set null' }),
+  departureTime: timestamp('departure_time', { withTimezone: true }),
+  departurePersonType: personTypeEnum('departure_person_type'),
+  departurePersonId: uuid('departure_person_id'),
+  departureMethod: checkMethodEnum('departure_method'),
+  departureScannedBy: uuid('departure_scanned_by').references(() => users.id, { onDelete: 'set null' }),
+  notes: text('notes').default(''),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex('attendance_child_date').on(table.childId, table.date),
+  index('attendances_date_idx').on(table.date),
+  index('attendances_status_idx').on(table.status),
 ]);

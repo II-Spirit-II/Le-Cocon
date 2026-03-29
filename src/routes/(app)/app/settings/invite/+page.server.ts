@@ -4,8 +4,10 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { useInviteCode } from '$lib/domain/invites';
-import { requireRole } from '$lib/server/helpers';
+import { requireRole, createRateLimiter } from '$lib/server/helpers';
 import { inviteCodeSchema, parseFormData } from '$lib/server/validation';
+
+const rateLimitInvite = createRateLimiter(5, 300_000);
 
 export const load: PageServerLoad = async ({ locals }) => {
   requireRole(locals.user, 'parent');
@@ -15,6 +17,10 @@ export const load: PageServerLoad = async ({ locals }) => {
 export const actions: Actions = {
   default: async ({ request, locals }) => {
     requireRole(locals.user, 'parent');
+
+    if (!rateLimitInvite(locals.user.id)) {
+      return fail(429, { error: 'Trop de tentatives. Réessayez dans 5 minutes.', code: '' });
+    }
 
     const formData = await request.formData();
     const v = parseFormData(inviteCodeSchema, formData);

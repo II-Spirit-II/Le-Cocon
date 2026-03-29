@@ -11,7 +11,7 @@
     Smile, Meh, Frown, Moon, UtensilsCrossed, CalendarDays,
     BookOpen, Newspaper, Trash2, Check, ChevronLeft,
     Thermometer, Heart, ChevronRight, Copy, Pencil, Droplets,
-    TrendingUp, Clock
+    TrendingUp, Clock, ShieldCheck, UserPlus, Phone, X
   } from 'lucide-svelte';
 
   interface Props {
@@ -27,6 +27,10 @@
   let isGenerating = $state(false);
   let copiedCode = $state<string | null>(null);
   let highlightedCode = $state<string | null>(null);
+
+  // Authorized persons
+  let showAddPerson = $state(false);
+  let isAddingPerson = $state(false);
 
   // === Derived data ===
   const lastLog = $derived(data.recentLogs[0] ?? null);
@@ -644,7 +648,8 @@
   .bento :global(.bento-trends) { order: 2; }
   .bento :global(.bento-news) { order: 3; }
   .bento :global(.bento-schedule) { order: 4; }
-  .bento :global(.bento-codes) { order: 5; }
+  .bento :global(.bento-authorized) { order: 5; }
+  .bento :global(.bento-codes) { order: 6; }
 
   /* Tablet: 2-column grid */
   @media (min-width: 768px) {
@@ -652,24 +657,26 @@
       display: grid;
       grid-template-columns: repeat(2, 1fr);
       grid-template-areas:
-        "hero     hero"
-        "journal  journal"
-        "trends   trends"
-        "schedule news"
-        "codes    .";
+        "hero       hero"
+        "journal    journal"
+        "trends     trends"
+        "schedule   news"
+        "authorized codes";
     }
     .bento-parent {
       grid-template-areas:
-        "hero     hero"
-        "journal  journal"
-        "trends   trends"
-        "schedule news";
+        "hero       hero"
+        "journal    journal"
+        "trends     trends"
+        "schedule   news"
+        "authorized .";
     }
     .bento :global(.bento-hero) { grid-area: hero; }
     .bento :global(.bento-journal) { grid-area: journal; }
     .bento :global(.bento-trends) { grid-area: trends; }
     .bento :global(.bento-news) { grid-area: news; }
     .bento :global(.bento-schedule) { grid-area: schedule; }
+    .bento :global(.bento-authorized) { grid-area: authorized; }
     .bento :global(.bento-codes) { grid-area: codes; }
   }
 
@@ -678,17 +685,18 @@
     .bento {
       grid-template-columns: 3fr 2fr;
       grid-template-areas:
-        "hero     hero"
-        "journal  trends"
-        "journal  news"
-        "schedule codes";
+        "hero       hero"
+        "journal    trends"
+        "journal    news"
+        "schedule   authorized"
+        "codes      .";
     }
     .bento-parent {
       grid-template-areas:
-        "hero     hero"
-        "journal  trends"
-        "journal  news"
-        "journal  schedule";
+        "hero       hero"
+        "journal    trends"
+        "journal    news"
+        "schedule   authorized";
     }
     .bento :global(.bento-journal) { min-height: 0; }
     .bento :global(.bento-trends) { min-height: 0; }
@@ -1305,6 +1313,117 @@
           </div>
         {/if}
       {/if}
+    </Card>
+  </FadeIn>
+
+  <!-- ══════ AUTHORIZED PERSONS ══════ -->
+  <FadeIn delay={160} class="bento-authorized h-full">
+    <Card padding="md" class="h-full flex flex-col">
+      <div class="flex items-center justify-between mb-3 shrink-0">
+        <div class="flex items-center gap-2">
+          <ShieldCheck size={14} class="text-sienne-500" />
+          <h3 class="font-display font-bold text-base text-warm-900">Personnes autorisées</h3>
+        </div>
+        {#if !showAddPerson}
+          <button
+            type="button"
+            onclick={() => { showAddPerson = true; }}
+            class="text-xs text-miel-500 hover:text-miel-700 font-medium transition-colors flex items-center gap-1"
+          >
+            <UserPlus size={11} />
+            Ajouter
+          </button>
+        {/if}
+      </div>
+
+      <!-- Add form -->
+      {#if showAddPerson}
+        <form method="POST" action="?/addAuthorizedPerson" class="mb-3 p-3 glass-2 rounded-xl space-y-2"
+          use:enhance={() => {
+            isAddingPerson = true;
+            return async ({ update, result }) => {
+              isAddingPerson = false;
+              if (result.type === 'success') showAddPerson = false;
+              update();
+            };
+          }}
+        >
+          <input type="hidden" name="childId" value={data.child.id} />
+          <input
+            type="text"
+            name="name"
+            placeholder="Nom complet"
+            required
+            class="w-full px-3 py-1.5 text-sm rounded-lg bg-soie/40 border border-soie/25 text-warm-900
+              placeholder:text-warm-400 outline-none focus-visible:border-miel-400/50 focus-visible:ring-1 focus-visible:ring-miel-400/20 transition-colors"
+          />
+          <div class="grid grid-cols-2 gap-2">
+            <input
+              type="text"
+              name="relationship"
+              placeholder="Lien (ex: grand-mère)"
+              required
+              class="px-3 py-1.5 text-sm rounded-lg bg-soie/40 border border-soie/25 text-warm-900
+                placeholder:text-warm-400 outline-none focus-visible:border-miel-400/50 focus-visible:ring-1 focus-visible:ring-miel-400/20 transition-colors"
+            />
+            <input
+              type="tel"
+              name="phone"
+              placeholder="Téléphone"
+              class="px-3 py-1.5 text-sm rounded-lg bg-soie/40 border border-soie/25 text-warm-900
+                placeholder:text-warm-400 outline-none focus-visible:border-miel-400/50 focus-visible:ring-1 focus-visible:ring-miel-400/20 transition-colors"
+            />
+          </div>
+          <div class="flex gap-2 pt-1">
+            <button
+              type="submit"
+              disabled={isAddingPerson}
+              class="flex-1 text-xs font-semibold py-1.5 rounded-lg bg-miel-100 text-miel-700 hover:bg-miel-200 transition-colors disabled:opacity-50"
+            >
+              {isAddingPerson ? 'Ajout...' : 'Ajouter'}
+            </button>
+            <button
+              type="button"
+              onclick={() => { showAddPerson = false; }}
+              class="text-xs font-medium py-1.5 px-3 rounded-lg text-warm-500 hover:text-warm-700 transition-colors"
+            >
+              Annuler
+            </button>
+          </div>
+        </form>
+      {/if}
+
+      <!-- List -->
+      <div class="flex-1 min-h-0 overflow-y-auto codes-scroll">
+        {#if data.authorizedPersons.length > 0}
+          <div class="space-y-2">
+            {#each data.authorizedPersons as person (person.id)}
+              <div class="flex items-center justify-between p-2.5 rounded-xl glass-2" in:fly={{ y: -10, duration: 250 }}>
+                <div class="min-w-0 flex-1">
+                  <p class="text-sm font-semibold text-warm-900 truncate">{person.name}</p>
+                  <p class="text-[10px] text-warm-500 flex items-center gap-1.5 mt-0.5">
+                    <span>{person.relationship}</span>
+                    {#if person.phone}
+                      <span class="text-warm-300">·</span>
+                      <span class="flex items-center gap-0.5"><Phone size={9} /> {person.phone}</span>
+                    {/if}
+                  </p>
+                </div>
+                <form method="POST" action="?/removeAuthorizedPerson" use:enhance>
+                  <input type="hidden" name="personId" value={person.id} />
+                  <button type="submit" class="p-1.5 text-warm-400 hover:text-argile-500 transition-colors outline-none" title="Retirer">
+                    <X size={13} />
+                  </button>
+                </form>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <p class="text-xs text-warm-400 text-center py-3 italic">
+            Aucune personne autorisée
+          </p>
+        {/if}
+      </div>
     </Card>
   </FadeIn>
 

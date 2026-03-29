@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { CalendarEvent } from '$lib/domain/parent_notes';
+  import type { CalendarEvent } from '$lib/types';
   import { CalendarOff, Clock } from 'lucide-svelte';
 
   interface Props {

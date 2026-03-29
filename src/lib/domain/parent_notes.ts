@@ -4,25 +4,15 @@
 import { eq, and, gte, lte, desc, asc, isNull, isNotNull, sql, count, inArray } from 'drizzle-orm';
 import type { DrizzleDB } from '$lib/server/db';
 import { parentNotes, children, parentChildren } from '$lib/server/db/schema';
-import type { ParentNote, ParentNoteKind } from '$lib/types';
+import type { ParentNote, ParentNoteKind, CalendarEvent } from '$lib/types';
+
+export type { CalendarEvent };
 
 export interface ListNotesOptions {
   childId?: string;
   onlyOpen?: boolean;
   limit?: number;
   offset?: number;
-}
-
-export interface CalendarEvent {
-  id: string;
-  childId: string;
-  childName: string;
-  kind: ParentNoteKind;
-  startDate: string;
-  endDate: string;
-  content: string;
-  acknowledgedAt: string | null;
-  createdAt: string;
 }
 
 export interface CalendarInsights {

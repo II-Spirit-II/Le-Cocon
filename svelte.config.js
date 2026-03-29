@@ -12,11 +12,13 @@ const config = {
     },
     csp: {
       directives: {
+        'default-src': ['self'],
         'script-src': ['self'],
         'style-src': ['self', 'unsafe-inline'],
         'font-src': ['self'],
         'img-src': ['self', 'data:', 'blob:', 'https://s3.fr-par.scw.cloud', 'https://api.dicebear.com'],
         'connect-src': ['self', 'https://api.scaleway.ai', 'https://api.scaleway.com'],
+        'worker-src': ['self', 'blob:'],
         'manifest-src': ['self'],
         'frame-ancestors': ['none'],
         'base-uri': ['self'],

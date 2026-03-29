@@ -83,7 +83,91 @@ export interface HealthEntry {
 }
 
 
+// -- Attendance --
+
+export type AttendanceStatus = 'present' | 'absent_planned' | 'absent_unplanned';
+export type CheckMethod = 'qr' | 'manual';
+export type PersonType = 'parent' | 'authorized_person';
+
+export interface Attendance {
+  id: string;
+  childId: string;
+  date: string;
+  status: AttendanceStatus;
+  arrivalTime: string | null;
+  arrivalPersonType: PersonType | null;
+  arrivalPersonId: string | null;
+  arrivalMethod: CheckMethod | null;
+  departureTime: string | null;
+  departurePersonType: PersonType | null;
+  departurePersonId: string | null;
+  departureMethod: CheckMethod | null;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AttendanceWithChild extends Attendance {
+  childFirstName: string;
+  childLastName: string;
+  childAvatar: string | null;
+  expectedStart: string | null;
+  expectedEnd: string | null;
+  parentIds: string[];
+}
+
+export interface MonthlyChildReport {
+  childId: string;
+  childFirstName: string;
+  childLastName: string;
+  childAvatar: string | null;
+  expectedHours: number;
+  actualHours: number;
+  deltaHours: number;
+  daysPresent: number;
+  daysAbsentPlanned: number;
+  daysAbsentUnplanned: number;
+  daysExpected: number;
+}
+
+export interface AuthorizedPerson {
+  id: string;
+  childId: string;
+  name: string;
+  relationship: string;
+  phone: string | null;
+  photoPath: string | null;
+  active: boolean;
+  createdAt: string;
+}
+
+// -- AI Action Results --
+
+export type ActionType = 'create_journal' | 'create_news';
+
+export interface ActionResult {
+  type: ActionType;
+  success: boolean;
+  message: string;
+  resourcePath?: string;
+  resourceLabel?: string;
+}
+
+// -- Parent Notes --
+
 export type ParentNoteKind = 'absence' | 'retard' | 'sante' | 'logistique' | 'autre';
+
+export interface CalendarEvent {
+  id: string;
+  childId: string;
+  childName: string;
+  kind: ParentNoteKind;
+  startDate: string;
+  endDate: string;
+  content: string;
+  acknowledgedAt: string | null;
+  createdAt: string;
+}
 
 export interface ParentNote {
   id: string;

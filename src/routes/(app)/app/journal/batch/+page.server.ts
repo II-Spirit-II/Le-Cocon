@@ -40,7 +40,8 @@ export const actions: Actions = {
     const date = formData.get('date')?.toString();
     const entriesJson = formData.get('entries')?.toString();
 
-    if (!date || !entriesJson) return fail(400, { error: 'Données manquantes' });
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail(400, { error: 'Date invalide' });
+    if (!entriesJson) return fail(400, { error: 'Données manquantes' });
 
     const entries = parseJsonSafe<Array<{
       childId: string;

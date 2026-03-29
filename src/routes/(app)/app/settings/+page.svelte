@@ -368,7 +368,7 @@
                   use:enhance={() => { isDeleting = true; return async ({ update, result }) => { isDeleting = false; if (result.type === 'redirect') { auth.logout(); return; } await update(); }; }}>
                   <input type="password" name="password" placeholder="Confirmez votre mot de passe"
                     bind:value={deletePassword} required
-                    class="input-soie w-full !border-argile-400/20 focus-visible:!border-argile-400 focus-visible:!ring-argile-400/20" />
+                    class="input-soie w-full border-argile-400/20! focus-visible:border-argile-400! focus-visible:ring-argile-400/20!" />
                   <div class="flex gap-2">
                     <Button type="submit" variant="danger" disabled={isDeleting || !deletePassword}>
                       {isDeleting ? 'Suppression...' : 'Confirmer la suppression'}
